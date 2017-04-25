@@ -66,6 +66,8 @@ extern "C" {
 #define NETCONN_NOAUTORCVD  0x08 /* prevent netconn_recv_data_tcp() from updating the tcp window - must be done manually via netconn_tcp_recvd() */
 
 /* Flags for struct netconn.flags (u8_t) */
+/** This netconn had an error, don't block on recvmbox/acceptmbox any more */
+#define NETCONN_FLAG_MBOXCLOSED               0x01
 /** Should this netconn avoid blocking? */
 #define NETCONN_FLAG_NON_BLOCKING             0x02
 /** Was the last connect action a non-blocking one? */
@@ -215,8 +217,8 @@ struct netconn {
     struct udp_pcb *udp;
     struct raw_pcb *raw;
   } pcb;
-  /** the last error this netconn had */
-  err_t last_err;
+  /** the last asynchronous unreported error this netconn had */
+  err_t pending_err;
 #if !LWIP_NETCONN_SEM_PER_THREAD
   /** sem that is used to synchronously execute functions in the core context */
   sys_sem_t op_completed;
@@ -268,8 +270,15 @@ struct netconn {
   netconn_callback callback;
 };
 
+/** This vector type is passed to @ref netconn_write_vectors_partly to send
+ * multiple buffers at once.
+ * ATTENTION: This type has to directly map @ref struct iovec since one is casted
+ *            into the other!
+ */
 struct netvector {
+  /** pointer to the application buffer that contains the data to send */
   const void *ptr;
+  /** size of the application data to send */
   size_t len;
 };
 
@@ -277,16 +286,6 @@ struct netvector {
 #define API_EVENT(c,e,l) if (c->callback) {         \
                            (*c->callback)(c, e, l); \
                          }
-
-/** Set conn->last_err to err but don't overwrite fatal errors */
-#define NETCONN_SET_SAFE_ERR(conn, err) do { if ((conn) != NULL) { \
-  SYS_ARCH_DECL_PROTECT(netconn_set_safe_err_lev); \
-  SYS_ARCH_PROTECT(netconn_set_safe_err_lev); \
-  if (!ERR_IS_FATAL((conn)->last_err)) { \
-    (conn)->last_err = err; \
-  } \
-  SYS_ARCH_UNPROTECT(netconn_set_safe_err_lev); \
-}} while(0);
 
 /* Network connection functions: */
 
@@ -320,7 +319,7 @@ err_t   netconn_recv_udp_raw_netbuf(struct netconn *conn, struct netbuf **new_bu
 err_t   netconn_recv_udp_raw_netbuf_flags(struct netconn *conn, struct netbuf **new_buf, u8_t apiflags);
 err_t   netconn_recv_tcp_pbuf(struct netconn *conn, struct pbuf **new_buf);
 err_t   netconn_recv_tcp_pbuf_flags(struct netconn *conn, struct pbuf **new_buf, u8_t apiflags);
-err_t   netconn_tcp_recvd(struct netconn *conn, u32_t len);
+err_t   netconn_tcp_recvd(struct netconn *conn, size_t len);
 err_t   netconn_sendto(struct netconn *conn, struct netbuf *buf,
                              const ip_addr_t *addr, u16_t port);
 err_t   netconn_send(struct netconn *conn, struct netbuf *buf);
@@ -348,7 +347,7 @@ err_t   netconn_gethostbyname(const char *name, ip_addr_t *addr);
 #endif /* LWIP_IPV4 && LWIP_IPV6 */
 #endif /* LWIP_DNS */
 
-#define netconn_err(conn)               ((conn)->last_err)
+err_t   netconn_err(struct netconn *conn);
 #define netconn_recv_bufsize(conn)      ((conn)->recv_bufsize)
 
 /** Set the blocking status of netconn calls (@todo: write/send is missing) */

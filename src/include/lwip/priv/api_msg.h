@@ -120,7 +120,7 @@ struct api_msg {
     } w;
     /** used for lwip_netconn_do_recv */
     struct {
-      u32_t len;
+      size_t len;
     } r;
 #if LWIP_TCP
     /** used for lwip_netconn_do_close (/shutdown) */
@@ -185,10 +185,7 @@ struct dns_api_msg {
 };
 #endif /* LWIP_DNS */
 
-#if LWIP_TCP
-extern u8_t netconn_aborted;
-#endif /* LWIP_TCP */
-
+int lwip_netconn_is_err_msg(void *msg, err_t *err);
 void lwip_netconn_do_newconn         (void *m);
 void lwip_netconn_do_delconn         (void *m);
 void lwip_netconn_do_bind            (void *m);

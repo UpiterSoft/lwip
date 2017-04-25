@@ -222,6 +222,22 @@ netif_input(struct pbuf *p, struct netif *inp)
  * @ingroup netif
  * Add a network interface to the list of lwIP netifs.
  *
+ * Same as @ref netif_add but without IPv4 addresses
+ */
+struct netif *
+netif_add_noaddr(struct netif *netif, void *state, netif_init_fn init, netif_input_fn input)
+{
+  return netif_add(netif,
+#if LWIP_IPV4
+    NULL, NULL, NULL,
+#endif /* LWIP_IPV4*/
+    state, init, input);
+}
+
+/**
+ * @ingroup netif
+ * Add a network interface to the list of lwIP netifs.
+ *
  * @param netif a pre-allocated netif structure
  * @param ipaddr IP address for the new netif
  * @param netmask network mask for the new netif
@@ -380,9 +396,9 @@ netif_add(struct netif *netif,
   ip4_addr_debug_print(NETIF_DEBUG, gw);
 #endif /* LWIP_IPV4 */
   LWIP_DEBUGF(NETIF_DEBUG, ("\n"));
-  
+
   netif_invoke_ext_callback(netif, LWIP_NSC_NETIF_ADDED, NULL);
-  
+
   return netif;
 }
 
@@ -647,7 +663,7 @@ netif_set_netmask(struct netif *netif, const ip4_addr_t *netmask)
   ip_addr_copy(old_addr, *netif_ip_netmask4(netif));
   args.ipv4_nm_changed.old_address = &old_addr;
 #endif
-  
+
   /* address is actually being changed? */
   if (ip4_addr_cmp(safe_netmask, netif_ip4_netmask(netif)) == 0) {
     mib2_remove_route_ip4(0, netif);
@@ -1056,6 +1072,8 @@ netif_poll(struct netif *netif)
     /* De-queue the pbuf from its successors on the 'loop_' list. */
     in_end->next = NULL;
     SYS_ARCH_UNPROTECT(lev);
+
+    in->if_idx = netif_get_index(netif);
 
     LINK_STATS_INC(link.recv);
     MIB2_STATS_NETIF_ADD(stats_if, ifinoctets, in->tot_len);
@@ -1471,7 +1489,7 @@ netif_get_by_index(u8_t idx)
     }
   }
 
-  return NULL;   
+  return NULL;
 }
 
 /**
@@ -1531,11 +1549,10 @@ void netif_add_ext_callback(netif_ext_callback_t* callback, netif_ext_callback_f
 void netif_invoke_ext_callback(struct netif* netif, netif_nsc_reason_t reason, const netif_ext_callback_args_t* args)
 {
   netif_ext_callback_t* callback = ext_callback;
-  
+
   LWIP_ASSERT("netif must be != NULL", netif != NULL);
-  
-  while (callback != NULL)
-  {
+
+  while (callback != NULL) {
     callback->callback_fn(netif, reason, args);
     callback = callback->next;
   }

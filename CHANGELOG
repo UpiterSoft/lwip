@@ -6,6 +6,10 @@ HISTORY
 
   ++ New features:
 
+  2017-04-11: Simon Goldschmidt
+  * netconn/sockets: remove fatal error handling, fix asynchronous error handling,
+    ensure data before RST can be received
+
   2017-03-02: Simon Goldschmidt
   * netconn: added nonblocking accept/recv to netconn API (task #14396)
 
@@ -31,6 +35,10 @@ HISTORY
     - Support IP_HDRINCL socket option
 
   ++ Bugfixes:
+
+  2017-04-11: Simon Goldschmidt
+  * sockets.c: task #14420 (Remove sys_sem_signal from inside SYS_ARCH_PROTECT
+    crit section) done for LWIP_TCPIP_CORE_LOCKING==1
 
   2017-03-01: Simon Goldschmidt
   * httpd: LWIP_HTTPD_POST_MANUAL_WND: fixed double-free when httpd_post_data_recved

@@ -98,7 +98,7 @@
  *        response comes from the server we sent the request to.
  * - >= 2 to check returned Originate Timestamp against Transmit Timestamp
  *        sent to the server (to ensure response to older request).
- * - >= 3 @todo: discard reply if any of the LI, Stratum, or Transmit Timestamp
+ * - >= 3 @todo: discard reply if any of the VN, Stratum, or Transmit Timestamp
  *        fields is 0 or the Mode field is not 4 (unicast) or 5 (broadcast).
  * - >= 4 @todo: to check that the Root Delay and Root Dispersion fields are each
  *        greater than or equal to 0 and less than infinity, where infinity is
@@ -140,14 +140,18 @@
  * Turned off by default.
  */
 #if !defined SNTP_STARTUP_DELAY || defined __DOXYGEN__
+#ifdef LWIP_RAND
+#define SNTP_STARTUP_DELAY          1
+#else
 #define SNTP_STARTUP_DELAY          0
+#endif
 #endif
 
 /** If you want the startup delay to be a function, define this
  * to a function (including the brackets) and define SNTP_STARTUP_DELAY to 1.
  */
 #if !defined SNTP_STARTUP_DELAY_FUNC || defined __DOXYGEN__
-#define SNTP_STARTUP_DELAY_FUNC     SNTP_STARTUP_DELAY
+#define SNTP_STARTUP_DELAY_FUNC     (LWIP_RAND() % 5000)
 #endif
 
 /** SNTP receive timeout - in milliseconds
