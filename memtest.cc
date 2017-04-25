@@ -63,10 +63,9 @@ void  memt_free (void* ptr){
 	const char* dmb = DM_block;
 	DM_changeBlock("memt");
 
-	free(ptr);
-
 	if (ptr!=NULL){
-		for (int i=0; i<memrecs().size(); i++){
+		free(ptr);
+		for (size_t i=0; i<memrecs().size(); ++i){
 			if (memrecs()[i].ptr==ptr){
 				memused -= memrecs()[i].size;
 				memrecs().erase(memrecs().begin()+i);
