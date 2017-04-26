@@ -7,6 +7,10 @@ sources = Split("""
 	
 	src/api/err.c
 	
+	src/apps/httpd/fs.c
+	src/apps/httpd/fs_custom_files.cc
+	src/apps/httpd/fsdata.c
+	
 	src/core/def.c
 	src/core/dns.c
 	src/core/inet_chksum.c
