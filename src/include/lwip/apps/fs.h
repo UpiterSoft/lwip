@@ -53,6 +53,18 @@ struct fsdata_chksum {
 #define FS_FILE_FLAGS_HEADER_INCLUDED     0x01
 #define FS_FILE_FLAGS_HEADER_PERSISTENT   0x02
 
+#if LWIP_HTTPD_CUSTOM_FILES
+#include <fatfs.h>
+#include <Network/PostResponse.h>
+
+enum {
+	CUSTOM_FILE_OFF = 0,
+	CUSTOM_FILE_SD,
+	CUSTOM_FILE_JSON,
+};
+
+#endif /* LWIP_HTTPD_CUSTOM_FILES */
+
 struct fs_file {
   const char *data;
   int len;
@@ -65,6 +77,9 @@ struct fs_file {
   u8_t flags;
 #if LWIP_HTTPD_CUSTOM_FILES
   u8_t is_custom_file;
+  FIL * fileObject;
+  PostResponse *jsonResponse;
+  uint32_t ETag;
 #endif /* LWIP_HTTPD_CUSTOM_FILES */
 #if LWIP_HTTPD_FILE_STATE
   void *state;
