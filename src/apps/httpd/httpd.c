@@ -102,6 +102,11 @@
 #include "lwip/altcp_tls.h"
 #endif
 
+#include <debug_log.h>
+#include "DebugCallStack.h"
+#include <DataLoggerMonitoring/ParameterSaveHelper.h>
+#include "post.h"
+
 #include <string.h> /* memset */
 #include <stdlib.h> /* atoi */
 #include <stdio.h>
@@ -150,12 +155,11 @@ typedef struct
   u8_t shtml;
 } default_filename;
 
+const char * const defaultIndexHtml = "/index.html";
+
 const default_filename g_psDefaultFilenames[] = {
-  {"/index.shtml", 1 },
-  {"/index.ssi",   1 },
-  {"/index.shtm",  1 },
-  {"/index.html",  0 },
-  {"/index.htm",   0 }
+		  {defaultIndexHtml, 0 },
+		  {smallPageUri, 0},
 };
 
 #define NUM_DEFAULT_FILENAMES (sizeof(g_psDefaultFilenames) /   \
@@ -346,6 +350,8 @@ http_add_connection(struct http_state *hs)
   /* add the connection to the list */
   hs->next = http_connections;
   http_connections = hs;
+  conns++;
+  memtest();
 }
 
 static void
@@ -361,6 +367,8 @@ http_remove_connection(struct http_state *hs)
         if (last->next == hs) {
           last->next = hs->next;
           break;
+          conns--;
+          memtest();
         }
       }
     }
@@ -401,6 +409,68 @@ http_kill_oldest_connection(u8_t ssi_required)
 #define http_remove_connection(hs)
 
 #endif /* LWIP_HTTPD_KILL_OLD_ON_CONNECTIONS_EXCEEDED */
+
+#if LWIP_HTTPD_STRNSTR_PRIVATE
+/** Like strstr but does not need 'buffer' to be NULL-terminated */
+char* strnstr(const char* buffer, const char* token, size_t n, bool ignorecase = false)
+{
+  const char* p;
+  int tokenlen = (int)strlen(token);
+  if (tokenlen == 0) {
+    return (char *)buffer;
+  }
+  for (p = buffer; *p && (p + tokenlen <= buffer + n); p++) {
+
+    if ((*p == *token) && ( (ignorecase && (strncasecmp(p, token, tokenlen) == 0)) || (strncmp(p, token, tokenlen) == 0))) {
+      return (char *)p;	// strnicmp
+    }
+  }
+  return NULL;
+} 
+#endif /* LWIP_HTTPD_STRNSTR_PRIVATE */
+
+int conns = 0;
+http_state * priority_connection = NULL;
+int last_free_mem = 0;
+//static int small_mem = 0;
+
+void memtest(int mem, int block){
+	void *p;
+	do{
+		p = malloc(block);
+		if (p==NULL) {
+			block/=2;
+			if (block<512) break;
+		}
+	} while (p==NULL);
+
+	if (p!=NULL){
+//		if (block<400)
+//			small_mem+=block;
+
+		memtest(mem+block, block);
+	    free(p);
+	} else {
+		last_free_mem = mem;
+	}
+}
+void memtest(){
+#ifndef SIMULATION
+//	DebugCallStack st("memtest");
+//	small_mem = 0;
+	memtest(0, 4096);
+#else
+	last_free_mem = 1024*1024;
+#endif
+	if (PRINT_LOG_COND(MAX2(CFG_DEBUG_LOG_NET,CFG_DEBUG_LOG_MEMORY), LOG_LEVEL_MIDDLE_PRIORITY)){
+		static int32_t lastout = -1;
+		if (lastout != last_free_mem){
+			lastout = last_free_mem;
+			PRINT_LOG(MAX2(CFG_DEBUG_LOG_NET,CFG_DEBUG_LOG_MEMORY), LOG_LEVEL_MIDDLE_PRIORITY, "freemem: %i, conns: %i, used by lwip: %i, by DL progs: %i\r\n", last_free_mem, conns, memused, ParameterSaveHelper::sizeofParameters());
+		}
+	}
+}
+
 
 #if LWIP_HTTPD_SSI
 /** Allocate as struct http_ssi_state. */
@@ -448,6 +518,7 @@ static struct http_state*
 http_state_alloc(void)
 {
   struct http_state *ret = HTTP_ALLOC_HTTP_STATE();
+  PRINT_LOG(MAX2(CFG_DEBUG_LOG_NET,CFG_DEBUG_LOG_MEMORY), LOG_LEVEL_MIDDLE_PRIORITY, "http_state_alloc %p\r\n", ret);
 #if LWIP_HTTPD_KILL_OLD_ON_CONNECTIONS_EXCEEDED
   if (ret == NULL) {
     http_kill_oldest_connection(0);
@@ -474,6 +545,9 @@ http_state_eof(struct http_state *hs)
     LWIP_DEBUGF(HTTPD_DEBUG_TIMING, ("httpd: needed %"U32_F" ms to send file of %d bytes -> %"U32_F" bytes/sec\n",
       ms_needed, hs->handle->len, ((((u32_t)hs->handle->len) * 10) / needed)));
 #endif /* LWIP_HTTPD_TIMING */
+    if (fs_bytes_left(hs->handle)>0){
+        PRINT_LOG(CFG_DEBUG_LOG_NET, LOG_LEVEL_HI_PRIORITY, "http_state_eof on NOT finished file %p\r\n", hs);
+    }
     fs_close(hs->handle);
     hs->handle = NULL;
   }
@@ -504,6 +578,9 @@ static void
 http_state_free(struct http_state *hs)
 {
   if (hs != NULL) {
+	  if (priority_connection == hs){
+		  priority_connection = NULL;
+	  }
     http_state_eof(hs);
     http_remove_connection(hs);
     HTTP_FREE_HTTP_STATE(hs);
@@ -526,6 +603,7 @@ http_write(struct altcp_pcb *pcb, const void* ptr, u16_t *length, u8_t apiflags)
   err_t err;
   LWIP_ASSERT("length != NULL", length != NULL);
   len = *length;
+  DebugCallStack st("h_wr");
   if (len == 0) {
     return ERR_OK;
   }
@@ -545,6 +623,10 @@ http_write(struct altcp_pcb *pcb, const void* ptr, u16_t *length, u8_t apiflags)
     LWIP_DEBUGF(HTTPD_DEBUG | LWIP_DBG_TRACE, ("Trying go send %d bytes\n", len));
     err = altcp_write(pcb, ptr, len, apiflags);
     if (err == ERR_MEM) {
+
+      PRINT_LOG(MAX2(CFG_DEBUG_LOG_NET,CFG_DEBUG_LOG_MEMORY), LOG_LEVEL_HI_PRIORITY, "err_mem\t");
+      memtest();
+
       if ((altcp_sndbuf(pcb) == 0) ||
         (altcp_sndqueuelen(pcb) >= TCP_SND_QUEUELEN)) {
           /* no need to try smaller sizes */
@@ -585,6 +667,7 @@ http_write(struct altcp_pcb *pcb, const void* ptr, u16_t *length, u8_t apiflags)
 static err_t
 http_close_or_abort_conn(struct altcp_pcb *pcb, struct http_state *hs, u8_t abort_conn)
 {
+  DebugCallStack st("h_cl");
   err_t err;
   LWIP_DEBUGF(HTTPD_DEBUG, ("Closing connection %p\n", (void*)pcb));
 
@@ -620,6 +703,7 @@ http_close_or_abort_conn(struct altcp_pcb *pcb, struct http_state *hs, u8_t abor
   if (err != ERR_OK) {
     LWIP_DEBUGF(HTTPD_DEBUG, ("Error %d closing %p\n", err, (void*)pcb));
     /* error closing, try again later in poll */
+    PRINT_LOG(CFG_DEBUG_LOG_NET, LOG_LEVEL_HI_PRIORITY, "Error %d closing %p\n", err, (void*)pcb);
     altcp_poll(pcb, http_poll, HTTPD_POLL_INTERVAL);
   }
   return err;
@@ -823,6 +907,38 @@ get_tag_insert(struct http_state *hs)
 }
 #endif /* LWIP_HTTPD_SSI */
 
+
+static int http_bufLimit(struct tcp_pcb *pcb, struct http_state *hs, int avail_mem){
+	  int bufLimit = HTTPD_MAX_WRITE_LEN(pcb);
+	  if (avail_mem<=0) {
+		  bufLimit = 64;
+	  } else if (avail_mem<=1*1024) {
+		  bufLimit = 160;
+	  } else if (avail_mem<=3*1024) {
+		  bufLimit = 512;
+	  } else if (avail_mem<=5*1024) {
+		  bufLimit = 1024;
+	  } else if (avail_mem<=6*1024) {
+		  bufLimit = TCP_MSS;
+	  }
+	  if (bufLimit>64){
+		  if (memused>HTTP_MEMUSE_LEVEL_1)
+			  bufLimit/=2;
+		  if (memused>HTTP_MEMUSE_LEVEL_2)
+			  bufLimit/=2;
+		  if (memused>HTTP_MEMUSE_LEVEL_2+2*1024)
+			  bufLimit = 64;
+	  }
+	  if ( (priority_connection == hs) && (avail_mem-256>bufLimit) ){
+		  bufLimit = avail_mem/2;
+		  if (bufLimit > HTTPD_MAX_WRITE_LEN(pcb))
+			  bufLimit = HTTPD_MAX_WRITE_LEN(pcb);
+	  }
+
+	  return bufLimit;
+}
+
+
 #if LWIP_HTTPD_DYNAMIC_HEADERS
 /**
  * Generate the relevant HTTP headers for the given filename and write
@@ -905,6 +1021,20 @@ get_http_headers(struct http_state *hs, const char *uri)
   /* Reinstate the parameter marker if there was one in the original URI. */
   if (vars) {
     *vars = '?';
+
+    if (pState->handle && (pState->handle->is_custom_file == CUSTOM_FILE_SD) && (pState->handle->ETag!=0)){
+    	char buf[100];
+		int slen = snprintf(buf, 100, "ETag: \"%u\"\r\nContent-Length: %d\r\n", pState->handle->ETag, pState->handle->len);
+
+		pState->tempHeader = (char*)mem_malloc(slen+1);
+		if (pState->tempHeader != nullptr) {
+			memcpy(pState->tempHeader, buf, slen+1);
+			pState->hdrs[3] = pState->tempHeader;
+		} else {
+			pState->hdrs[3] = "";
+		}
+		pState->hdrs[4] = g_psHTTPHeaderStrings[CACHE_CONTROL_MAX_AGE];
+    }
   }
 
 #if LWIP_HTTPD_OMIT_HEADER_FOR_EXTENSIONLESS_URI
@@ -984,9 +1114,14 @@ http_send_headers(struct altcp_pcb *pcb, struct http_state *hs)
   u8_t data_to_send = HTTP_NO_DATA_TO_SEND;
   u16_t hdrlen, sendlen;
 
+  DebugCallStack sth("hdr");
+
   /* How much data can we send? */
-  len = altcp_sndbuf(pcb);
+  len = http_bufLimit(pcb, hs, last_free_mem-HTTP_MEM_RESERVE);
   sendlen = len;
+
+  PRINT_LOG(MAX2(CFG_DEBUG_LOG_NET,CFG_DEBUG_LOG_MEMORY), LOG_LEVEL_MIDDLE_PRIORITY, "buf: %i (%i), avmem:%i, lwip:%i, reserve:%i%s\r\n",
+  		len, HTTPD_MAX_WRITE_LEN(pcb), last_free_mem-HTTP_MEM_RESERVE, memused, HTTP_MEM_RESERVE, (priority_connection == hs)?" PRIORITY":"");
 
   while(len && (hs->hdr_index < NUM_FILE_HDR_STRINGS) && sendlen) {
     const void *ptr;
@@ -1065,7 +1200,10 @@ http_send_headers(struct altcp_pcb *pcb, struct http_state *hs)
 static u8_t
 http_check_eof(struct altcp_pcb *pcb, struct http_state *hs)
 {
+  DebugCallStack st("h_eof");
+
   int bytes_left;
+
 #if LWIP_HTTPD_DYNAMIC_FILE_READ
   int count;
 #ifdef HTTPD_MAX_WRITE_LEN
@@ -1087,6 +1225,16 @@ http_check_eof(struct altcp_pcb *pcb, struct http_state *hs)
     return 0;
   }
 #if LWIP_HTTPD_DYNAMIC_FILE_READ
+
+  int avail_mem = last_free_mem + ((hs->buf)?hs->buf_len:0) - HTTP_MEM_RESERVE;
+
+  int bufLimit = http_bufLimit(pcb, hs, avail_mem);
+
+  if (hs->buf && (hs->buf_len != bufLimit)) {
+	  mem_free(hs->buf);
+	  hs->buf = NULL;
+  }
+
   /* Do we already have a send buffer allocated? */
   if(hs->buf) {
     /* Yes - get the length of the buffer */
@@ -1104,6 +1252,10 @@ http_check_eof(struct altcp_pcb *pcb, struct http_state *hs)
       count = max_write_len;
     }
 #endif /* HTTPD_MAX_WRITE_LEN */
+    if (count > bufLimit)
+    	count = bufLimit;
+    PRINT_LOG(MAX2(CFG_DEBUG_LOG_NET,CFG_DEBUG_LOG_MEMORY), LOG_LEVEL_MIDDLE_PRIORITY, "buf: %i (%i), avmem:%i, lwip:%i, reserve:%i%s\r\n",
+    		count, HTTPD_MAX_WRITE_LEN(pcb), avail_mem, memused, HTTP_MEM_RESERVE, (priority_connection == hs)?" PRIORITY":"");
     do {
       hs->buf = (char*)mem_malloc((mem_size_t)count);
       if (hs->buf != NULL) {
@@ -1123,10 +1275,19 @@ http_check_eof(struct altcp_pcb *pcb, struct http_state *hs)
   /* Read a block of data from the file. */
   LWIP_DEBUGF(HTTPD_DEBUG, ("Trying to read %d bytes.\n", count));
 
+  DebugCallStack str("rd");
+
 #if LWIP_HTTPD_FS_ASYNC_READ
   count = fs_read_async(hs->handle, hs->buf, count, http_continue, hs);
 #else /* LWIP_HTTPD_FS_ASYNC_READ */
   count = fs_read(hs->handle, hs->buf, count);
+
+//  int showread = count;
+//  if (showread>0) {
+//	  if (showread>50) showread = 50;
+//	  PRINT_LOG(CFG_DEBUG_LOG_NET, LOG_LEVEL_LOW_PRIORITY, "read %i:%.*s", hs->handle->is_custom_file, showread, hs->buf);
+//  }
+
 #endif /* LWIP_HTTPD_FS_ASYNC_READ */
   if (count < 0) {
     if (count == FS_READ_DELAYED) {
@@ -1201,6 +1362,8 @@ http_send_data_ssi(struct altcp_pcb *pcb, struct http_state *hs)
    * them with insert strings. We need to be careful here since a tag may
    * straddle the boundary of two blocks read from the file and we may also
    * have to split the insert string between two tcp_write operations. */
+
+  DebugCallStack stw("wr");
 
   /* How much data could we send? */
   len = altcp_sndbuf(pcb);
@@ -1527,6 +1690,8 @@ http_send_data_ssi(struct altcp_pcb *pcb, struct http_state *hs)
 static u8_t
 http_send(struct altcp_pcb *pcb, struct http_state *hs)
 {
+	DebugCallStack st("h_sn");
+
   u8_t data_to_send = HTTP_NO_DATA_TO_SEND;
 
   LWIP_DEBUGF(HTTPD_DEBUG | LWIP_DBG_TRACE, ("http_send: pcb=%p hs=%p left=%d\n", (void*)pcb,
@@ -1541,6 +1706,28 @@ http_send(struct altcp_pcb *pcb, struct http_state *hs)
   /* If we were passed a NULL state structure pointer, ignore the call. */
   if (hs == NULL) {
     return 0;
+  }
+
+  {
+//		DebugCallStack st1("st1");
+		PRINT_LOG(CFG_DEBUG_LOG_NET, LOG_LEVEL_LOW_PRIORITY, "send %p\t", hs->handle);
+		memtest();
+  }
+
+  if ( (hs!=NULL) &&
+		  (hs->handle!=NULL) &&
+		  (hs->handle->jsonResponse!=NULL)
+  ){
+	  if (hs->handle->jsonResponse->isResponseReady()){
+		  priority_connection = hs;
+	  } else {
+		  hs->handle->jsonResponse->setResponseResumeCallbackData(pcb, hs);
+		  return 0;
+	  }
+  }
+
+  if (priority_connection == NULL){
+	  priority_connection = hs;
   }
 
 #if LWIP_HTTPD_FS_ASYNC_READ
@@ -1561,6 +1748,38 @@ http_send(struct altcp_pcb *pcb, struct http_state *hs)
     }
   }
 #endif /* LWIP_HTTPD_DYNAMIC_HEADERS */
+
+//  if ((hs->sendRedirect == http_state::REDIRECT_YES) && (conns>1)){
+//	  if (conns>=16){
+//		  PRINT_LOG(CFG_DEBUG_LOG_NET, LOG_LEVEL_LOW_PRIORITY, "clredir conns>=16 %x\r\n", hs);
+//		  http_close_conn(pcb, hs);
+//		  return 0;
+//	  }
+//	  hs->retries = 0;
+//
+//	  if (primary_connection == NULL){
+//		  primary_connection = hs;
+//		  PRINT_LOG(CFG_DEBUG_LOG_NET, LOG_LEVEL_LOW_PRIORITY, "clredir next %x\r\n", hs);
+//		  return 0;
+//	  }
+//	  if (primary_connection != hs){
+//		  PRINT_LOG(CFG_DEBUG_LOG_NET, LOG_LEVEL_LOW_PRIORITY, "hlredir %x\r\n", hs);
+//		  return 0;
+//	  }
+//  }
+//  if (hs->sendRedirect == http_state::REDIRECT_YES){
+//	  PRINT_LOG(CFG_DEBUG_LOG_NET, LOG_LEVEL_LOW_PRIORITY, "clredir %x\r\n", hs);
+//	  http_close_conn(pcb, hs);
+//	  return 0;
+//  }
+
+  if ((priority_connection != hs) && (last_free_mem-HTTP_MEM_RESERVE <= 1024)){
+	  PRINT_LOG(CFG_DEBUG_LOG_NET, LOG_LEVEL_MIDDLE_PRIORITY, "low mem (%i), conn sleep %p\r\n", last_free_mem, hs);
+	  hs->retries = 0;
+	  return 0;
+  }
+
+
 
   /* Have we run out of file data to send? If so, we need to read the next
    * block from the file. */
@@ -1639,9 +1858,12 @@ http_find_error_file(struct http_state *hs, u16_t error_nr)
  * @param uri pointer that receives the actual file name URI
  * @return file struct for the error page or NULL no matching file was found
  */
+
 static struct fs_file *
 http_get_404_file(struct http_state *hs, const char **uri)
 {
+  return NULL;
+
   err_t err;
 
   *uri = "/404.html";
@@ -1727,7 +1949,11 @@ http_post_rxpbuf(struct http_state *hs, struct pbuf *p)
     }
 #endif /* LWIP_HTTPD_SUPPORT_POST && LWIP_HTTPD_POST_MANUAL_WND */
     /* application error or POST finished */
-    return http_handle_post_finished(hs);
+    err_t e = http_handle_post_finished(hs);
+    if ((hs->file_handle.is_custom_file == CUSTOM_FILE_JSON) && (hs->file_handle.jsonResponse!=NULL)){
+    	hs->file_handle.jsonResponse->setCookieSessionID(hs->session_id);
+    }
+    return e;
   }
 
   return ERR_OK;
@@ -1914,6 +2140,8 @@ http_continue(void *connection)
 static err_t
 http_parse_request(struct pbuf *inp, struct http_state *hs, struct altcp_pcb *pcb)
 {
+	DebugCallStack st("h_prsrq");
+
   char *data;
   char *crlf;
   u16_t data_len;
@@ -2160,7 +2388,10 @@ http_find_file(struct http_state *hs, const char *uri, int is_09)
     params = (char *)strchr(uri, '?');
     if (params != NULL) {
       /* URI contains parameters. NULL-terminate the base URI */
-      *params = '\0';
+    	if (strstr(uri, smallPageUri)!=NULL){
+    		//skip removing '?'
+    	} else
+    		*params = '\0';
       params++;
     }
 
@@ -2185,9 +2416,12 @@ http_find_file(struct http_state *hs, const char *uri, int is_09)
 
     LWIP_DEBUGF(HTTPD_DEBUG | LWIP_DBG_TRACE, ("Opening %s\n", uri));
 
-    err = fs_open(&hs->file_handle, uri);
+    err = fs_open(&hs->file_handle, uri, hs->session_id);
     if (err == ERR_OK) {
        file = &hs->file_handle;
+       if ((file->is_custom_file == CUSTOM_FILE_JSON) && (file->jsonResponse!=NULL)){
+    	   file->jsonResponse->setCookieSessionID(hs->session_id);
+       }
     } else {
       file = http_get_404_file(hs, &uri);
     }
@@ -2244,6 +2478,7 @@ static err_t
 http_init_file(struct http_state *hs, struct fs_file *file, int is_09, const char *uri,
                u8_t tag_check, char* params)
 {
+	PRINT_LOG(CFG_DEBUG_LOG_NET, LOG_LEVEL_MIDDLE_PRIORITY, "init_file %s\r\n", uri);
   if (file != NULL) {
     /* file opened, initialise struct http_state */
 #if LWIP_HTTPD_SSI
@@ -2323,6 +2558,26 @@ http_init_file(struct http_state *hs, struct fs_file *file, int is_09, const cha
 #if LWIP_HTTPD_DYNAMIC_HEADERS
   /* Determine the HTTP headers to send based on the file extension of
    * the requested URI. */
+  if ((hs->ETag != 0) && (file->ETag==hs->ETag)){
+	  uri = "/304.htm";
+	  fs_close(hs->handle);
+	  hs->handle = (fs_file *)NULL;
+	  hs->file = (char *)NULL;
+	  hs->left = 0;
+	  hs->retries = 0;
+//  } else {
+//	  if ((hs->sendRedirect == http_state::REDIRECT_IF_FILE) &&
+//			  (hs->handle!=NULL) && (hs->handle->is_custom_file==CUSTOM_FILE_SD) ){
+//		  PRINT_LOG(CFG_DEBUG_LOG_NET, LOG_LEVEL_LOW_PRIORITY, "Redir %s\r\n", uri);
+//		  hs->sendRedirect = http_state::REDIRECT_YES;
+//		  fs_close(hs->handle);
+//		  hs->handle = (fs_file *)NULL;
+//		  hs->file = (char *)NULL;
+//		  hs->left = 0;
+//		  hs->retries = 0;
+//	  }
+  }
+
   if ((hs->handle == NULL) || ((hs->handle->flags & FS_FILE_FLAGS_HEADER_INCLUDED) == 0)) {
     get_http_headers(hs, uri);
   }
@@ -2359,6 +2614,7 @@ http_err(void *arg, err_t err)
 
   LWIP_DEBUGF(HTTPD_DEBUG, ("http_err: %s", lwip_strerr(err)));
 
+  PRINT_LOG(CFG_DEBUG_LOG_NET, LOG_LEVEL_HI_PRIORITY, "http_err: %i", err);
   if (hs != NULL) {
     http_state_free(hs);
   }
@@ -2371,6 +2627,8 @@ http_err(void *arg, err_t err)
 static err_t
 http_sent(void *arg, struct altcp_pcb *pcb, u16_t len)
 {
+	DebugCallStack st("h_snt");
+
   struct http_state *hs = (struct http_state *)arg;
 
   LWIP_DEBUGF(HTTPD_DEBUG | LWIP_DBG_TRACE, ("http_sent %p\n", (void*)pcb));
@@ -2416,6 +2674,15 @@ http_poll(void *arg, struct altcp_pcb *pcb)
 #endif /* LWIP_HTTPD_ABORT_ON_CLOSE_MEM_ERROR */
     return ERR_OK;
   } else {
+
+    if (
+      (hs->handle!=NULL) &&
+      (hs->handle->jsonResponse!=NULL) &&
+      (hs->handle->jsonResponse->isResponseReady()==false)
+      ){
+        return ERR_OK;//don't count retries
+    }
+
     hs->retries++;
     if (hs->retries == HTTPD_MAX_RETRIES) {
       LWIP_DEBUGF(HTTPD_DEBUG, ("http_poll: too many retries, close\n"));
@@ -2446,9 +2713,18 @@ http_poll(void *arg, struct altcp_pcb *pcb)
 static err_t
 http_recv(void *arg, struct altcp_pcb *pcb, struct pbuf *p, err_t err)
 {
+	DebugCallStack st("h_rv");
+
   struct http_state *hs = (struct http_state *)arg;
   LWIP_DEBUGF(HTTPD_DEBUG | LWIP_DBG_TRACE, ("http_recv: pcb=%p pbuf=%p err=%s\n", (void*)pcb,
     (void*)p, lwip_strerr(err)));
+
+  static void* lastpcb = 0;
+  if (lastpcb != (void*)pcb){
+	  PRINT_LOG(CFG_DEBUG_LOG_NET, LOG_LEVEL_LOW_PRIORITY, "http_recv:%p %p\r\n", (void*)pcb, (void*)hs);
+	  lastpcb = pcb;
+  } else
+	  PRINT_LOG(CFG_DEBUG_LOG_NET, LOG_LEVEL_LOW_PRIORITY, "#");
 
   if ((err != ERR_OK) || (p == NULL) || (hs == NULL)) {
     /* error or closed by other side? */
@@ -2551,6 +2827,21 @@ http_accept(void *arg, struct altcp_pcb *pcb, err_t err)
     return ERR_MEM;
   }
   hs->pcb = pcb;
+
+  PRINT_LOG(CFG_DEBUG_LOG_NET, LOG_LEVEL_MIDDLE_PRIORITY, "http_accept:%p %p\r\n", (void*)pcb, (void*)hs);
+
+//  if ((conns > 5) || ((conns > 3) && (last_free_mem<4096))){
+//	  hs->sendRedirect = http_state::REDIRECT_IF_FILE;
+//  }
+//  if (primary_connection == NULL){
+//	  primary_connection = hs;
+//	  hs->sendRedirect = http_state::REDIRECT_NO;
+//  }
+
+//  if (!tcp_nagle_disabled(pcb)){
+//	  PRINT_LOG(CFG_DEBUG_LOG_NET, LOG_LEVEL_MIDDLE_PRIORITY, "tcp_nagle_disable %p %p\r\n", (void*)pcb, (void*)hs);
+//	  tcp_nagle_disable(pcb);
+//  }
 
   /* Tell TCP that this is the structure we wish to be passed for our
      callbacks. */
