@@ -8,11 +8,6 @@
 #ifndef FS_CUSTOM_FILES_H_
 #define FS_CUSTOM_FILES_H_
 
-#ifdef __cplusplus
-extern "C" {
-#endif // __cplusplus
-
-
 
 #include <stdint.h>
 #include <fatfs.h>
@@ -40,7 +35,9 @@ typedef struct fs_pextension {
 				  type(t) {}
 } fs_pextension_t;
 
-
+#ifdef __cplusplus
+extern "C" {
+#endif // __cplusplus
 
 int fs_open_custom(struct fs_file *file, const char *name);
 void fs_close_custom(struct fs_file *file);
