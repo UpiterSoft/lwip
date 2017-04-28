@@ -60,9 +60,12 @@ static void initFileStruct(struct fs_file *const file, PostResponse* const respo
 	file->data = NULL;				// data is not exists, for now
 }
 
+extern "C"
 int fs_open_custom(struct fs_file *file, const char *name)
 {
 	PRINT_LOG(CFG_DEBUG_LOG_NET, LOG_LEVEL_LOW_PRIORITY, "open %p '%s'\r\n", file, name);
+
+	file->pextension = nullptr;
 
 	if (strncmp(name, jsonResponseUri, strlen(jsonResponseUri)) == 0)
 	{
@@ -145,6 +148,7 @@ int fs_open_custom(struct fs_file *file, const char *name)
 	return 1;
 }
 
+extern "C"
 void fs_close_custom(struct fs_file *file)
 {
 	PRINT_LOG(CFG_DEBUG_LOG_NET, LOG_LEVEL_LOW_PRIORITY, "close %p\r\n", file);
@@ -160,18 +164,20 @@ void fs_close_custom(struct fs_file *file)
 			delete extra->fileObject;
 			extra->fileObject = nullptr;
 		}
-		return;
+		break;
 	}
 	case CUSTOM_FILE_JSON:
 	{
 		delete extra->jsonResponse;
 		extra->jsonResponse = nullptr;
-		return;
+		break;
 	}
 	}
 
+	delete extra;
 }
 
+extern "C"
 int fs_read_custom(struct fs_file *file, char *buffer, int count)
 {
 	fs_pextension_t* const extra = (fs_pextension_t*)file->pextension;
