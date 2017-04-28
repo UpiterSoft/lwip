@@ -21,6 +21,9 @@
  * Use dhcp_release() to end the lease and use dhcp_stop()
  * to remove the DHCP client.
  *
+ * @see LWIP_HOOK_DHCP_APPEND_OPTIONS
+ * @see LWIP_HOOK_DHCP_PARSE_OPTION 
+ *
  * @see netifapi_dhcp4
  */
 
@@ -77,6 +80,16 @@
 #include "lwip/prot/dhcp.h"
 
 #include <string.h>
+
+#ifdef LWIP_HOOK_FILENAME
+#include LWIP_HOOK_FILENAME
+#endif
+#ifndef LWIP_HOOK_DHCP_APPEND_OPTIONS
+#define LWIP_HOOK_DHCP_APPEND_OPTIONS(netif, dhcp, state, msg, msg_type)
+#endif
+#ifndef LWIP_HOOK_DHCP_PARSE_OPTION
+#define LWIP_HOOK_DHCP_PARSE_OPTION(netif, dhcp, state, msg, msg_type, option, len, pbuf, offset)
+#endif
 
 /** DHCP_CREATE_RAND_XID: if this is set to 1, the xid is created using
  * LWIP_RAND() (this overrides DHCP_GLOBAL_XID)
@@ -381,6 +394,7 @@ dhcp_select(struct netif *netif)
     dhcp_option_hostname(dhcp, netif);
 #endif /* LWIP_NETIF_HOSTNAME */
 
+    LWIP_HOOK_DHCP_APPEND_OPTIONS(netif, dhcp, DHCP_STATE_REQUESTING, dhcp->msg_out, DHCP_REQUEST);
     dhcp_option_trailer(dhcp);
     /* shrink the pbuf to the actual content length */
     pbuf_realloc(dhcp->p_out, sizeof(struct dhcp_msg) - DHCP_OPTIONS_LEN + dhcp->options_out_len);
@@ -815,6 +829,7 @@ dhcp_inform(struct netif *netif)
     dhcp_option(&dhcp, DHCP_OPTION_MAX_MSG_SIZE, DHCP_OPTION_MAX_MSG_SIZE_LEN);
     dhcp_option_short(&dhcp, DHCP_MAX_MSG_LEN(netif));
 
+    LWIP_HOOK_DHCP_APPEND_OPTIONS(netif, &dhcp, DHCP_STATE_INFORMING, dhcp.msg_out, DHCP_INFORM);
     dhcp_option_trailer(&dhcp);
 
     pbuf_realloc(dhcp.p_out, sizeof(struct dhcp_msg) - DHCP_OPTIONS_LEN + dhcp.options_out_len);
@@ -927,6 +942,7 @@ dhcp_decline(struct netif *netif)
     dhcp_option(dhcp, DHCP_OPTION_REQUESTED_IP, 4);
     dhcp_option_long(dhcp, lwip_ntohl(ip4_addr_get_u32(&dhcp->offered_ip_addr)));
 
+    LWIP_HOOK_DHCP_APPEND_OPTIONS(netif, dhcp, DHCP_STATE_BACKING_OFF, dhcp->msg_out, DHCP_DECLINE);
     dhcp_option_trailer(dhcp);
     /* resize pbuf to reflect true size of options */
     pbuf_realloc(dhcp->p_out, sizeof(struct dhcp_msg) - DHCP_OPTIONS_LEN + dhcp->options_out_len);
@@ -977,6 +993,7 @@ dhcp_discover(struct netif *netif)
     for (i = 0; i < LWIP_ARRAYSIZE(dhcp_discover_request_options); i++) {
       dhcp_option_byte(dhcp, dhcp_discover_request_options[i]);
     }
+    LWIP_HOOK_DHCP_APPEND_OPTIONS(netif, dhcp, DHCP_STATE_SELECTING, dhcp->msg_out, DHCP_DISCOVER);
     dhcp_option_trailer(dhcp);
 
     LWIP_DEBUGF(DHCP_DEBUG | LWIP_DBG_TRACE, ("dhcp_discover: realloc()ing\n"));
@@ -1146,6 +1163,7 @@ dhcp_renew(struct netif *netif)
     dhcp_option_hostname(dhcp, netif);
 #endif /* LWIP_NETIF_HOSTNAME */
 
+    LWIP_HOOK_DHCP_APPEND_OPTIONS(netif, dhcp, DHCP_STATE_RENEWING, dhcp->msg_out, DHCP_REQUEST);
     /* append DHCP message trailer */
     dhcp_option_trailer(dhcp);
 
@@ -1198,6 +1216,7 @@ dhcp_rebind(struct netif *netif)
     dhcp_option_hostname(dhcp, netif);
 #endif /* LWIP_NETIF_HOSTNAME */
 
+    LWIP_HOOK_DHCP_APPEND_OPTIONS(netif, dhcp, DHCP_STATE_REBINDING, dhcp->msg_out, DHCP_DISCOVER);
     dhcp_option_trailer(dhcp);
 
     pbuf_realloc(dhcp->p_out, sizeof(struct dhcp_msg) - DHCP_OPTIONS_LEN + dhcp->options_out_len);
@@ -1246,7 +1265,7 @@ dhcp_reboot(struct netif *netif)
     for (i = 0; i < LWIP_ARRAYSIZE(dhcp_discover_request_options); i++) {
       dhcp_option_byte(dhcp, dhcp_discover_request_options[i]);
     }
-
+    LWIP_HOOK_DHCP_APPEND_OPTIONS(netif, dhcp, DHCP_STATE_REBOOTING, dhcp->msg_out, DHCP_REQUEST);
     dhcp_option_trailer(dhcp);
 
     pbuf_realloc(dhcp->p_out, sizeof(struct dhcp_msg) - DHCP_OPTIONS_LEN + dhcp->options_out_len);
@@ -1309,11 +1328,12 @@ dhcp_release_and_stop(struct netif *netif)
     if (result == ERR_OK) {
       dhcp_option(dhcp, DHCP_OPTION_SERVER_ID, 4);
       dhcp_option_long(dhcp, lwip_ntohl(ip4_addr_get_u32(ip_2_ip4(&server_ip_addr))));
-  
+
+      LWIP_HOOK_DHCP_APPEND_OPTIONS(netif, dhcp, dhcp->state, dhcp->msg_out, DHCP_RELEASE);
       dhcp_option_trailer(dhcp);
-  
+
       pbuf_realloc(dhcp->p_out, sizeof(struct dhcp_msg) - DHCP_OPTIONS_LEN + dhcp->options_out_len);
-  
+
       udp_sendto_if(dhcp_pcb, dhcp->p_out, &server_ip_addr, DHCP_SERVER_PORT, netif);
       dhcp_delete_msg(dhcp);
       LWIP_DEBUGF(DHCP_DEBUG | LWIP_DBG_TRACE | LWIP_DBG_STATE, ("dhcp_release: RELEASED, DHCP_STATE_OFF\n"));
@@ -1579,6 +1599,9 @@ again:
       default:
         decode_len = 0;
         LWIP_DEBUGF(DHCP_DEBUG, ("skipping option %"U16_F" in options\n", (u16_t)op));
+        LWIP_HOOK_DHCP_PARSE_OPTION(ip_current_netif(), dhcp, dhcp->state, dhcp->msg_in,
+          dhcp_option_given(dhcp, DHCP_OPTION_IDX_MSG_TYPE) ? (u8_t)dhcp_get_option_value(dhcp, DHCP_OPTION_IDX_MSG_TYPE) : 0,
+          op, len, q, val_offset);
         break;
     }
     offset += len + 2;
