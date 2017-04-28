@@ -141,6 +141,12 @@ extern signed long memused;
  */
 #define LWIP_HTTPD_CUSTOM_FILES       1
 
+/** Set this to 1 if you want to include code that creates HTTP headers
+ * at runtime. Default is off: HTTP headers are then created statically
+ * by the makefsdata tool. Static headers mean smaller code size, but
+ * the (readonly) fsdata will grow a bit as every file includes the HTTP
+ * header. */
+#define LWIP_HTTPD_DYNAMIC_HEADERS 1
 
 #define MEM_SIZE                        16384
 #define PBUF_POOL_SIZE                  8 // with NO_SYS=0, might need to increase this to 32 to avoid deadlocks
