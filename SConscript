@@ -9,7 +9,6 @@ sources = Split("""
 	
 	src/apps/httpd/fs.c
 	src/apps/httpd/fs_custom_files.cc
-	src/apps/httpd/fsdata.c
 	
 	src/core/def.c
 	src/core/dns.c
