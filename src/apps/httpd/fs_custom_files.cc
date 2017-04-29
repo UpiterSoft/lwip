@@ -129,7 +129,6 @@ int fs_open_custom(struct fs_file *file, const char *name)
 	{
 		MY_PRINT(("open file %s %d error\n\r", name, fr));
 		delete fil;
-		((fs_pextension_t*)(file->pextension))->fileObject = nullptr;
 		return 0;
 	}
 
