@@ -368,6 +368,7 @@ pbuf_alloc_reference(void *payload, u16_t length, pbuf_type type)
 /**
  * @ingroup pbuf
  * Initialize a custom pbuf (already allocated).
+ * Example of custom pbuf usage: @ref zerocopyrx
  *
  * @param l flag to define header size
  * @param length size of the pbuf's payload
@@ -1261,18 +1262,14 @@ struct pbuf*
 pbuf_coalesce(struct pbuf *p, pbuf_layer layer)
 {
   struct pbuf *q;
-  err_t err;
   if (p->next == NULL) {
     return p;
   }
-  q = pbuf_alloc(layer, p->tot_len, PBUF_RAM);
+  q = pbuf_clone(layer, PBUF_RAM, p);
   if (q == NULL) {
     /* @todo: what do we do now? */
     return p;
   }
-  err = pbuf_copy(q, p);
-  LWIP_UNUSED_ARG(err); /* in case of LWIP_NOASSERT */
-  LWIP_ASSERT("pbuf_copy failed", err == ERR_OK);
   pbuf_free(p);
   return q;
 }
