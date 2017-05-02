@@ -8,6 +8,7 @@ sources = Split("""
 	src/api/err.c
 	
 	src/apps/httpd/fs.c
+	src/apps/httpd/fsdata.c
 	src/apps/httpd/fs_custom_files.cc
 	
 	src/core/def.c
@@ -22,8 +23,6 @@ sources = Split("""
 	src/core/stats.c
 	src/core/timeouts.c
 	src/core/udp.c
-
-
 	src/core/raw.c
 	src/core/tcp.c
 	src/core/tcp_in.c
@@ -37,12 +36,11 @@ sources = Split("""
 	src/core/ipv4/ip4_frag.c
 	src/core/ipv4/ip4_addr.c
 	src/core/ipv4/ip4.c
-	
+
 	src/netif/ethernet.c
-	
-	
+
 	lwipinit.c
-	
+
 	memtest.cc
 	""")
 
@@ -52,28 +50,9 @@ sources.extend([
 	'src/core/sys.c',
 	])
 
-if targetEnv.has_key('SIMULATION'):
-	sources.append('netif/pcapif.c')
-	sources.append('netif/pcapif_helper.c')
-                                             
-# fuer netconn-API notwendig
-#sources.extend([
-#	'api/api_lib.c',
-#	'api/api_msg.c',
-#	'api/netbuf.c',
-#	])
-
-# fuer socket API notwendig
-#sources.extend([
-#	'api/sockets.c',
-#	])
-
-# FIXME: remove this and use a proper drivers/SConscript instead
-#sources.append(File('../drivers/ethernet/ksz8851.c'))
-
-#============================================================================
-
-#targetEnv.AppendUnique(CPPPATH=Dir('../include/lwip/ipv4'))
+sources.extend([
+	'src/apps/httpd/fsdata.c',
+	])
 
 program_sources.extend(File(sources))
 program_objects.extend(targetEnv.StaticObject(sources))

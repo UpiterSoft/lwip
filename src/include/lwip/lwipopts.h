@@ -66,6 +66,24 @@ extern signed long memused;
 
 #endif //MCU_GROUP_IS_STM32F1
 
+/*------------------- FS OPTIONS -------------------*/
+
+/** Set this to 1 and provide the functions:
+ * - "int fs_open_custom(struct fs_file *file, const char *name)"
+ *    Called first for every opened file to allow opening files
+ *    that are not included in fsdata(_custom).c
+ * - "void fs_close_custom(struct fs_file *file)"
+ *    Called to free resources allocated by fs_open_custom().
+ */
+#define LWIP_HTTPD_CUSTOM_FILES       1
+
+/** Set this to 1 if you want to include code that creates HTTP headers
+ * at runtime. Default is off: HTTP headers are then created statically
+ * by the makefsdata tool. Static headers mean smaller code size, but
+ * the (readonly) fsdata will grow a bit as every file includes the HTTP
+ * header. */
+#define LWIP_HTTPD_DYNAMIC_HEADERS 1
+
 #ifdef SIMULATION
 #include "lwipopts_sim.h"
 #else
@@ -129,24 +147,6 @@ extern signed long memused;
 #define LWIP_HTTPD_CGI            0
 /** Set this to 1 to support HTTP POST */
 #define LWIP_HTTPD_SUPPORT_POST   1
-
-/*------------------- FS OPTIONS -------------------*/
-
-/** Set this to 1 and provide the functions:
- * - "int fs_open_custom(struct fs_file *file, const char *name)"
- *    Called first for every opened file to allow opening files
- *    that are not included in fsdata(_custom).c
- * - "void fs_close_custom(struct fs_file *file)"
- *    Called to free resources allocated by fs_open_custom().
- */
-#define LWIP_HTTPD_CUSTOM_FILES       1
-
-/** Set this to 1 if you want to include code that creates HTTP headers
- * at runtime. Default is off: HTTP headers are then created statically
- * by the makefsdata tool. Static headers mean smaller code size, but
- * the (readonly) fsdata will grow a bit as every file includes the HTTP
- * header. */
-#define LWIP_HTTPD_DYNAMIC_HEADERS 1
 
 #define MEM_SIZE                        16384
 #define PBUF_POOL_SIZE                  8 // with NO_SYS=0, might need to increase this to 32 to avoid deadlocks
