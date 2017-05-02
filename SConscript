@@ -50,11 +50,12 @@ sources.extend([
 	'src/core/sys.c',
 	])
 
+program_sources.extend(File(sources))
+
 sources.extend([
 	'src/apps/httpd/fsdata.c',
 	])
 
-program_sources.extend(File(sources))
 program_objects.extend(targetEnv.StaticObject(sources))
 
 hostEnv['CPPPATH'].extend( [ Dir('src/include')] )
