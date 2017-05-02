@@ -36,7 +36,7 @@
 #include <string.h>
 
 
-#include HTTPD_FSDATA_FILE
+#include "fsdata.c"
 
 /*-----------------------------------------------------------------------------------*/
 

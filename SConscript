@@ -8,7 +8,6 @@ sources = Split("""
 	src/api/err.c
 	
 	src/apps/httpd/fs.c
-	src/apps/httpd/fsdata.c
 	src/apps/httpd/fs_custom_files.cc
 	
 	src/core/def.c
@@ -51,11 +50,6 @@ sources.extend([
 	])
 
 program_sources.extend(File(sources))
-
-sources.extend([
-	'src/apps/httpd/fsdata.c',
-	])
-
 program_objects.extend(targetEnv.StaticObject(sources))
 
 hostEnv['CPPPATH'].extend( [ Dir('src/include')] )
