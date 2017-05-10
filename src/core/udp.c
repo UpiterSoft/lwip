@@ -359,8 +359,6 @@ udp_input(struct pbuf *p, struct netif *inp)
         /* pass broadcast- or multicast packets to all multicast pcbs
            if SOF_REUSEADDR is set on the first match */
         struct udp_pcb *mpcb;
-        u8_t p_header_changed = 0;
-        s16_t hdrs_len = (s16_t)(ip_current_header_tot_len() + UDP_HLEN);
         for (mpcb = udp_pcbs; mpcb != NULL; mpcb = mpcb->next) {
           if (mpcb != pcb) {
             /* compare PCB local addr+port to UDP destination addr+port */
@@ -369,27 +367,13 @@ udp_input(struct pbuf *p, struct netif *inp)
               /* pass a copy of the packet to all local matches */
               if (mpcb->recv != NULL) {
                 struct pbuf *q;
-                /* for that, move payload to IP header again */
-                if (p_header_changed == 0) {
-                  pbuf_header_force(p, hdrs_len);
-                  p_header_changed = 1;
-                }
-                q = pbuf_alloc(PBUF_RAW, p->tot_len, PBUF_RAM);
+                q = pbuf_clone(PBUF_RAW, PBUF_POOL, p);
                 if (q != NULL) {
-                  err_t err = pbuf_copy(q, p);
-                  if (err == ERR_OK) {
-                    /* move payload to UDP data */
-                    pbuf_header(q, -hdrs_len);
-                    mpcb->recv(mpcb->recv_arg, mpcb, q, ip_current_src_addr(), src);
-                  }
+                  mpcb->recv(mpcb->recv_arg, mpcb, q, ip_current_src_addr(), src);
                 }
               }
             }
           }
-        }
-        if (p_header_changed) {
-          /* and move payload to UDP data again */
-          pbuf_header(p, -hdrs_len);
         }
       }
 #endif /* SO_REUSE && SO_REUSE_RXTOALL */
@@ -520,7 +504,6 @@ udp_sendto_chksum(struct udp_pcb *pcb, struct pbuf *p, const ip_addr_t *dst_ip,
 {
 #endif /* LWIP_CHECKSUM_ON_COPY && CHECKSUM_GEN_UDP */
   struct netif *netif;
-  const ip_addr_t *src_ip_route;
 
   if ((pcb == NULL) || (dst_ip == NULL) || !IP_ADDR_PCB_VERSION_MATCH(pcb, dst_ip)) {
     return ERR_VAL;
@@ -531,14 +514,6 @@ udp_sendto_chksum(struct udp_pcb *pcb, struct pbuf *p, const ip_addr_t *dst_ip,
   if (pcb->netif_idx != NETIF_NO_INDEX) {
     netif = netif_get_by_index(pcb->netif_idx);
   } else {
-    if (IP_IS_ANY_TYPE_VAL(pcb->local_ip)) {
-      /* Don't call ip_route() with IP_ANY_TYPE */
-      src_ip_route = IP46_ADDR_ANY(IP_GET_TYPE(dst_ip));
-    } else {
-      src_ip_route = &pcb->local_ip;
-    }
-    LWIP_UNUSED_ARG(src_ip_route); /* IPv4 only and no source based routing */
-
 #if LWIP_MULTICAST_TX_OPTIONS
     netif = NULL;
     if (ip_addr_ismulticast(dst_ip)) {
@@ -564,7 +539,7 @@ udp_sendto_chksum(struct udp_pcb *pcb, struct pbuf *p, const ip_addr_t *dst_ip,
            fails, we try regular routing as though no override was set. */
         if (!ip4_addr_isany_val(pcb->mcast_ip4) &&
             !ip4_addr_cmp(&pcb->mcast_ip4, IP4_ADDR_BROADCAST)) {
-          netif = ip4_route_src(ip_2_ip4(src_ip_route), &pcb->mcast_ip4);
+          netif = ip4_route_src(ip_2_ip4(&pcb->local_ip), &pcb->mcast_ip4);
         }
       }
 #endif /* LWIP_IPV4 */
@@ -574,7 +549,7 @@ udp_sendto_chksum(struct udp_pcb *pcb, struct pbuf *p, const ip_addr_t *dst_ip,
 #endif /* LWIP_MULTICAST_TX_OPTIONS */
     {
       /* find the outgoing network interface for this packet */
-      netif = ip_route(src_ip_route, dst_ip);
+      netif = ip_route(&pcb->local_ip, dst_ip);
     }
   }
 
@@ -1007,6 +982,9 @@ udp_bind(struct udp_pcb *pcb, const ip_addr_t *ipaddr, u16_t port)
 /**
  * @ingroup udp_raw
  * Bind an UDP PCB to a specific netif.
+ * After calling this function, all packets received via this PCB
+ * are guaranteed to have come in via the specified netif, and all
+ * outgoing packets will go out via the specified netif.
  *
  * @param pcb UDP PCB to be bound.
  * @param netif netif to bind udp pcb to. Can be NULL.

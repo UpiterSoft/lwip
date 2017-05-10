@@ -272,7 +272,7 @@ tcp_close_shutdown(struct tcp_pcb *pcb, u8_t rst_on_unacked_data)
 
       /* don't call tcp_abort here: we must not deallocate the pcb since
          that might not be expected when calling tcp_close */
-      tcp_rst(pcb->snd_nxt, pcb->rcv_nxt, &pcb->local_ip, &pcb->remote_ip,
+      tcp_rst(pcb, pcb->snd_nxt, pcb->rcv_nxt, &pcb->local_ip, &pcb->remote_ip,
                pcb->local_port, pcb->remote_port);
 
       tcp_pcb_purge(pcb);
@@ -358,7 +358,6 @@ tcp_close_shutdown_fin(struct tcp_pcb *pcb)
   default:
     /* Has already been closed, do nothing. */
     return ERR_OK;
-    break;
   }
 
   if (err == ERR_OK) {
@@ -513,7 +512,7 @@ tcp_abandon(struct tcp_pcb *pcb, int reset)
     tcp_backlog_accepted(pcb);
     if (send_rst) {
       LWIP_DEBUGF(TCP_RST_DEBUG, ("tcp_abandon: sending RST\n"));
-      tcp_rst(seqno, ackno, &pcb->local_ip, &pcb->remote_ip, local_port, pcb->remote_port);
+      tcp_rst(pcb, seqno, ackno, &pcb->local_ip, &pcb->remote_ip, local_port, pcb->remote_port);
     }
     last_state = pcb->state;
     memp_free(MEMP_TCP_PCB, pcb);
@@ -643,6 +642,9 @@ tcp_bind(struct tcp_pcb *pcb, const ip_addr_t *ipaddr, u16_t port)
 /**
  * @ingroup tcp_raw
  * Binds the connection to a netif and IP address.
+ * After calling this function, all packets received via this PCB
+ * are guaranteed to have come in via the specified netif, and all
+ * outgoing packets will go out via the specified netif.
  *
  * @param pcb the tcp_pcb to bind.
  * @param netif the netif to bind to. Can be NULL.
@@ -920,27 +922,25 @@ tcp_connect(struct tcp_pcb *pcb, const ip_addr_t *ipaddr, u16_t port,
   ip_addr_set(&pcb->remote_ip, ipaddr);
   pcb->remote_port = port;
 
-  /* check if we have a route to the remote host */
-  if (ip_addr_isany(&pcb->local_ip)) {
-    /* no local IP address set, yet. */
-    const ip_addr_t *local_ip;
-    ip_route_get_local_ip(&pcb->local_ip, &pcb->remote_ip, netif, local_ip);
-    if ((netif == NULL) || (local_ip == NULL)) {
-      /* Don't even try to send a SYN packet if we have no route
-         since that will fail. */
-      return ERR_RTE;
-    }
-    /* Use the address as local address of the pcb. */
-    ip_addr_copy(pcb->local_ip, *local_ip);
+  if (pcb->netif_idx != NETIF_NO_INDEX) {
+    netif = netif_get_by_index(pcb->netif_idx);
   } else {
+    /* check if we have a route to the remote host */
     netif = ip_route(&pcb->local_ip, &pcb->remote_ip);
-    if (netif == NULL) {
-      /* Don't even try to send a SYN packet if we have no route
-         since that will fail. */
+  }
+  if (netif == NULL) {
+    /* Don't even try to send a SYN packet if we have no route since that will fail. */
+    return ERR_RTE;
+  }
+
+  /* check if local IP has been assigned to pcb, if not, get one */
+  if (ip_addr_isany(&pcb->local_ip)) {
+    const ip_addr_t *local_ip = ip_netif_get_local_ip(netif, ipaddr);
+    if (local_ip == NULL) {
       return ERR_RTE;
     }
+    ip_addr_copy(pcb->local_ip, *local_ip);
   }
-  LWIP_ASSERT("netif != NULL", netif != NULL);
 
 #if LWIP_IPV6 && LWIP_IPV6_SCOPES
   /* If the given IP address should have a zone but doesn't, assign one now.
@@ -1072,17 +1072,21 @@ tcp_slowtmr_start:
       LWIP_DEBUGF(TCP_DEBUG, ("tcp_slowtmr: max DATA retries reached\n"));
     } else {
       if (pcb->persist_backoff > 0) {
-        /* If snd_wnd is zero, use persist timer to send 1 byte probes
-         * instead of using the standard retransmission mechanism. */
-        u8_t backoff_cnt = tcp_persist_backoff[pcb->persist_backoff-1];
-        if (pcb->persist_cnt < backoff_cnt) {
-          pcb->persist_cnt++;
-        }
-        if (pcb->persist_cnt >= backoff_cnt) {
-          if (tcp_zero_window_probe(pcb) == ERR_OK) {
-            pcb->persist_cnt = 0;
-            if (pcb->persist_backoff < sizeof(tcp_persist_backoff)) {
-              pcb->persist_backoff++;
+        if (pcb->persist_probe >= TCP_MAXRTX) {
+          ++pcb_remove; /* max probes reached */
+        } else {
+          /* If snd_wnd is zero, use persist timer to send 1 byte probes
+           * instead of using the standard retransmission mechanism. */
+          u8_t backoff_cnt = tcp_persist_backoff[pcb->persist_backoff-1];
+          if (pcb->persist_cnt < backoff_cnt) {
+            pcb->persist_cnt++;
+          }
+          if (pcb->persist_cnt >= backoff_cnt) {
+            if (tcp_zero_window_probe(pcb) == ERR_OK) {
+              pcb->persist_cnt = 0;
+              if (pcb->persist_backoff < sizeof(tcp_persist_backoff)) {
+                pcb->persist_backoff++;
+              }
             }
           }
         }
@@ -1213,8 +1217,8 @@ tcp_slowtmr_start:
       }
 
       if (pcb_reset) {
-        tcp_rst(pcb->snd_nxt, pcb->rcv_nxt, &pcb->local_ip, &pcb->remote_ip,
-                 pcb->local_port, pcb->remote_port);
+        tcp_rst(pcb, pcb->snd_nxt, pcb->rcv_nxt, &pcb->local_ip, &pcb->remote_ip,
+                pcb->local_port, pcb->remote_port);
       }
 
       err_arg = pcb->callback_arg;
@@ -1289,7 +1293,7 @@ tcp_slowtmr_start:
 
 /**
  * Is called every TCP_FAST_INTERVAL (250 ms) and process data previously
- * "refused" by upper layer (application) and sends delayed ACKs.
+ * "refused" by upper layer (application) and sends delayed ACKs or pending FINs.
  *
  * Automatically called from tcp_tmr().
  */

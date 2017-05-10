@@ -655,7 +655,7 @@ smtp_send_mail_static(const char *from, const char* to, const char* subject,
 
 
 /** @ingroup smtp
- * Same as smpt_send_mail but takes a struct smtp_send_request as single
+ * Same as smtp_send_mail but takes a struct smtp_send_request as single
  * parameter which contains all the other parameters.
  * To be used with tcpip_callback to send mail from interrupt context or from
  * another thread.
@@ -731,7 +731,7 @@ smtp_verify(const char *data, size_t data_len, u8_t linebreaks_allowed)
 }
 #endif /* SMTP_CHECK_DATA */
 
-/** Frees the smpt_session and calls the callback function */
+/** Frees the smtp_session and calls the callback function */
 static void
 smtp_free(struct smtp_session *s, u8_t result, u16_t srv_err, err_t err)
 {
@@ -1414,13 +1414,13 @@ smtp_process(void *arg, struct altcp_pcb *pcb, struct pbuf *p)
  *           0 no data has been written
  */
 static int
-smtp_send_bodyh_data(struct altcp_pcb *pcb, char **from, u16_t *howmany)
+smtp_send_bodyh_data(struct altcp_pcb *pcb, const char **from, u16_t *howmany)
 {
   err_t err;
   u16_t len = *howmany;
 
-  len = (u16_t)LWIP_MIN(len, tcp_sndbuf(pcb));
-  err = tcp_write(pcb, *from, len, TCP_WRITE_FLAG_COPY);
+  len = (u16_t)LWIP_MIN(len, altcp_sndbuf(pcb));
+  err = altcp_write(pcb, *from, len, TCP_WRITE_FLAG_COPY);
   if (err == ERR_OK) {
     *from += len;
     if ((*howmany -= len) > 0) {
@@ -1447,6 +1447,7 @@ smtp_send_mail_bodycback(const char *from, const char* to, const char* subject,
   memset(s, 0, sizeof(struct smtp_session));
   s->bodydh = (struct smtp_bodydh_state*)SMTP_BODYDH_MALLOC(sizeof(struct smtp_bodydh_state));
   if (s->bodydh == NULL) {
+    SMTP_STATE_FREE(s);
     return ERR_MEM;
   }
   memset(s->bodydh, 0, sizeof(struct smtp_bodydh));
@@ -1484,7 +1485,7 @@ smtp_send_body_data_handler(struct smtp_session *s, struct altcp_pcb *pcb)
   /* resume any leftovers from prior memory constraints */
   if (s->body_len) {
     LWIP_DEBUGF(SMTP_DEBUG_TRACE, ("smtp_send_body_data_handler: resume\n"));
-    if((res = smtp_send_bodyh_data(pcb, (char **)&s->body, &s->body_len))
+    if((res = smtp_send_bodyh_data(pcb, (const char **)&s->body, &s->body_len))
         != BDHALLDATASENT) {
       s->body_sent = s->body_len - 1;
       return;
@@ -1504,7 +1505,7 @@ smtp_send_body_data_handler(struct smtp_session *s, struct altcp_pcb *pcb)
       s->body_len = bdh->exposed.length;
       LWIP_DEBUGF(SMTP_DEBUG_TRACE, ("smtp_send_body_data_handler: trying to send %u bytes\n", (unsigned int)s->body_len));
     } while (s->body_len &&
-            ((res = smtp_send_bodyh_data(pcb, (char **)&s->body, &s->body_len)) == BDHALLDATASENT)
+            ((res = smtp_send_bodyh_data(pcb, (const char **)&s->body, &s->body_len)) == BDHALLDATASENT)
             && (bdh->state != BDH_STOP));
   }
   if ((bdh->state != BDH_SENDING) && (ret != BDHSOMEDATASENT)) {
