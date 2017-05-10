@@ -32,8 +32,6 @@
 #ifndef __LWIPOPTS_H__
 #define __LWIPOPTS_H__
 
-extern signed long memused;
-
 /** Set this to 1 to support SSI (Server-Side-Includes) */
 #define LWIP_HTTPD_SSI            0
 
