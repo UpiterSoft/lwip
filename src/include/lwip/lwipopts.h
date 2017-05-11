@@ -77,6 +77,11 @@ extern signed long memused;
  */
 #define LWIP_HTTPD_CUSTOM_FILES       1
 
+/** LWIP_HTTPD_FS_ASYNC_READ==1: support asynchronous read operations
+ * (fs_read_async returns FS_READ_DELAYED and calls a callback when finished).
+ */
+#define LWIP_HTTPD_FS_ASYNC_READ       1
+
 /** Set this to 1 if you want to include code that creates HTTP headers
  * at runtime. Default is off: HTTP headers are then created statically
  * by the makefsdata tool. Static headers mean smaller code size, but

@@ -177,8 +177,7 @@ void fs_close_custom(struct fs_file *file)
 }
 
 extern "C"
-int fs_read_custom(struct fs_file *file, char *buffer, int count)
-{
+int fs_read_async_custom(struct fs_file *file, char *buffer, int count, fs_wait_cb callback_fn, void *callback_arg) {
 	fs_pextension_t* const extra = (fs_pextension_t*)file->pextension;
 
 	switch (extra->type) {
@@ -221,3 +220,32 @@ int fs_read_custom(struct fs_file *file, char *buffer, int count)
 	MY_PRINT(("file %d reached eof\r\n", file));
 	return EOF;
 }
+
+extern "C"
+u8_t
+fs_canread_custom(struct fs_file *file)
+{
+  /* If reading would block, return 0 and implement fs_wait_read_custom() to call the
+     supplied callback if reading works. */
+	const PostResponse * const jsonResponse =
+			((fs_pextension*) (file->pextension))->jsonResponse;
+	if (jsonResponse != nullptr) {
+		return jsonResponse->isResponseReady() ? 1 : 0;
+	}
+  return 1;
+}
+
+extern "C"
+u8_t
+fs_wait_read_custom(struct fs_file *file, fs_wait_cb callback_fn, void *callback_arg)
+{
+  /* not implemented in this example */
+  LWIP_UNUSED_ARG(file);
+  LWIP_UNUSED_ARG(callback_fn);
+  LWIP_UNUSED_ARG(callback_arg);
+  /* Return
+     - 1 if ready to read (at least one byte)
+     - 0 if reading should be delayed (call 'tcpip_callback(callback_fn, callback_arg)' when ready) */
+  return 0;
+}
+
