@@ -18,6 +18,10 @@
 #define MY_PRINT(X)
 #endif
 
+extern "C"
+u8_t
+fs_canread_custom(struct fs_file *file);
+
 const char * const WebFolder = "WEB";
 
 static uint32_t getFileETag(const char *name)
@@ -197,7 +201,7 @@ int fs_read_async_custom(struct fs_file *file, char *buffer, int count, fs_wait_
 		}
 		else
 		{
-			return EOF;
+			return FS_READ_EOF;
 		}
 		UINT numberOfBytesRead = 0;
 		f_read(extra->fileObject, buffer, read, &numberOfBytesRead);
@@ -207,6 +211,10 @@ int fs_read_async_custom(struct fs_file *file, char *buffer, int count, fs_wait_
 	case CUSTOM_FILE_JSON:
 	{
 		DebugTime dtm("readjson", 80);
+
+		if (!fs_canread_custom(file)) {
+			return FS_READ_DELAYED;
+		}
 
 		int numberOfBytesRead = 0;
 		(extra->jsonResponse)->GetResponse(buffer, count, &numberOfBytesRead);
@@ -218,7 +226,7 @@ int fs_read_async_custom(struct fs_file *file, char *buffer, int count, fs_wait_
 	}
 
 	MY_PRINT(("file %d reached eof\r\n", file));
-	return EOF;
+	return FS_READ_EOF;
 }
 
 extern "C"
