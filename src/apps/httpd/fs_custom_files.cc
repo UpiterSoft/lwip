@@ -181,7 +181,11 @@ void fs_close_custom(struct fs_file *file)
 }
 
 extern "C"
+#if LWIP_HTTPD_FS_ASYNC_READ
 int fs_read_async_custom(struct fs_file *file, char *buffer, int count, fs_wait_cb callback_fn, void *callback_arg) {
+#else
+int fs_read_custom(struct fs_file *file, char *buffer, int count) {
+#endif
 	fs_pextension_t* const extra = (fs_pextension_t*)file->pextension;
 
 	switch (extra->type) {
@@ -212,9 +216,11 @@ int fs_read_async_custom(struct fs_file *file, char *buffer, int count, fs_wait_
 	{
 		DebugTime dtm("readjson", 80);
 
+#if LWIP_HTTPD_FS_ASYNC_READ
 		if (!fs_canread_custom(file)) {
 			return FS_READ_DELAYED;
 		}
+#endif
 
 		int numberOfBytesRead = 0;
 		(extra->jsonResponse)->GetResponse(buffer, count, &numberOfBytesRead);
@@ -229,6 +235,7 @@ int fs_read_async_custom(struct fs_file *file, char *buffer, int count, fs_wait_
 	return FS_READ_EOF;
 }
 
+#if LWIP_HTTPD_FS_ASYNC_READ
 extern "C"
 u8_t
 fs_canread_custom(struct fs_file *file)
@@ -256,4 +263,5 @@ fs_wait_read_custom(struct fs_file *file, fs_wait_cb callback_fn, void *callback
      - 0 if reading should be delayed (call 'tcpip_callback(callback_fn, callback_arg)' when ready) */
   return 0;
 }
+#endif // LWIP_HTTPD_FS_ASYNC_READ
 
