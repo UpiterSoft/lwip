@@ -35,16 +35,15 @@
 /** Set this to 1 to support SSI (Server-Side-Includes) */
 #define LWIP_HTTPD_SSI            0
 
-/** Set this to 0 to not send the SSI tag (default is on, so the tag will
-  * be sent in the HTML page */
-#define LWIP_HTTPD_SSI_INCLUDE_TAG 0
-
 /** Set this to 1 to support CGI */
 #define LWIP_HTTPD_CGI            0
 /** Set this to 1 to support HTTP POST */
 #define LWIP_HTTPD_SUPPORT_POST   1
 
 #define LWIP_HTTPD_DYNAMIC_FILE_READ  1
+
+/** The server port for HTTPD to use */
+#define HTTPD_SERVER_PORT         80
 
 #define NO_SYS                     1
 #define LWIP_SOCKET               (NO_SYS==0)

@@ -89,6 +89,47 @@ extern signed long memused;
  * header. */
 #define LWIP_HTTPD_DYNAMIC_HEADERS 1
 
+/** Maximum retries before the connection is aborted/closed.
+ * - number of times pcb->poll is called -> default is 4*500ms = 2s;
+ * - reset when pcb->sent is called
+ */
+#define HTTPD_MAX_RETRIES                   30
+
+/** Priority for tcp pcbs created by HTTPD (very low by default).
+ *  Lower priorities get killed first when running out of memory.
+ */
+#define HTTPD_TCP_PRIO                      TCP_PRIO_MAX
+
+/** Set this to 1 on platforms where strnstr is not available */
+#define LWIP_HTTPD_STRNSTR_PRIVATE          1
+
+/** Set this to 0 to drop support for HTTP/0.9 clients (to save some bytes) */
+#define LWIP_HTTPD_SUPPORT_V09              0
+
+/** Set this to 1 to enable HTTP/1.1 persistent connections.
+ * ATTENTION: If the generated file system includes HTTP headers, these must
+ * include the "Connection: keep-alive" header (pass argument "-11" to makefsdata).
+ */
+#define LWIP_HTTPD_SUPPORT_11_KEEPALIVE     0
+
+#if LWIP_HTTPD_SUPPORT_REQUESTLIST
+/** Number of rx pbufs to enqueue to parse an incoming request (up to the first
+    newline) */
+#define LWIP_HTTPD_REQ_QUEUELEN             20
+#endif /* LWIP_HTTPD_SUPPORT_REQUESTLIST */
+
+/** Set this to 0 to not send the SSI tag (default is on, so the tag will
+ * be sent in the HTML page */
+#define LWIP_HTTPD_SSI_INCLUDE_TAG           0
+
+/* By default, the httpd is limited to send 2*pcb->mss to keep resource usage low
+   when http is not an important protocol in the device. */
+#define HTTPD_LIMIT_SENDING_TO_2MSS 0
+
+#define HTTP_IS_DATA_VOLATILE(hs) TCP_WRITE_FLAG_COPY
+
+#define HTTP_IS_HDR_VOLATILE(hs, ptr) TCP_WRITE_FLAG_COPY
+
 #ifdef SIMULATION
 #include "lwipopts_sim.h"
 #else
@@ -144,14 +185,13 @@ extern signed long memused;
 /** Set this to 1 to support SSI (Server-Side-Includes) */
 #define LWIP_HTTPD_SSI            0
 
- /** Set this to 0 to not send the SSI tag (default is on, so the tag will
-  * be sent in the HTML page */
-#define LWIP_HTTPD_SSI_INCLUDE_TAG 0
-
 /** Set this to 1 to support CGI */
 #define LWIP_HTTPD_CGI            0
 /** Set this to 1 to support HTTP POST */
 #define LWIP_HTTPD_SUPPORT_POST   1
+
+/** The server port for HTTPD to use */
+#define HTTPD_SERVER_PORT         80
 
 #define MEM_SIZE                        16384
 #define PBUF_POOL_SIZE                  8 // with NO_SYS=0, might need to increase this to 32 to avoid deadlocks
@@ -203,7 +243,6 @@ extern signed long memused;
 
 //#define TCP_TMR_INTERVAL       5  /* The TCP timer interval in milliseconds. */
 
-#ifndef SIMULATION
 //#define LWIP_DEBUG
 //#define MEMP_DEBUG LWIP_DBG_ON
 //#define PBUF_DEBUG LWIP_DBG_ON
@@ -227,7 +266,5 @@ extern signed long memused;
  * and the contents must be ready after fs_open().
  */
 #define LWIP_HTTPD_DYNAMIC_FILE_READ  1
-
-#endif // !SIMULATION
 
 #endif //SIMULATION
