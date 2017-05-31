@@ -2452,6 +2452,11 @@ lwip_getsockopt_impl(int s, int level, int optname, void *optval, socklen_t *opt
 #if SO_REUSE
     case SO_REUSEADDR:
 #endif /* SO_REUSE */
+      if ((optname == SO_BROADCAST) &&
+          (NETCONNTYPE_GROUP(sock->conn->type) != NETCONN_UDP)) {
+        done_socket(sock);
+        return ENOPROTOOPT;
+      }
       LWIP_SOCKOPT_CHECK_OPTLEN_CONN_PCB(sock, *optlen, int);
       *(int*)optval = ip_get_option(sock->conn->pcb.ip, optname);
       LWIP_DEBUGF(SOCKETS_DEBUG, ("lwip_getsockopt(%d, SOL_SOCKET, optname=0x%x, ..) = %s\n",
@@ -2847,6 +2852,11 @@ lwip_setsockopt_impl(int s, int level, int optname, const void *optval, socklen_
 #if SO_REUSE
     case SO_REUSEADDR:
 #endif /* SO_REUSE */
+      if ((optname == SO_BROADCAST) &&
+          (NETCONNTYPE_GROUP(sock->conn->type) != NETCONN_UDP)) {
+        done_socket(sock);
+        return ENOPROTOOPT;
+      }
       LWIP_SOCKOPT_CHECK_OPTLEN_CONN_PCB(sock, optlen, int);
       if (*(const int*)optval) {
         ip_set_option(sock->conn->pcb.ip, optname);
