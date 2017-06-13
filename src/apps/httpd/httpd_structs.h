@@ -33,6 +33,9 @@ static const char * const g_psHTTPHeaderStrings[] =
 #if LWIP_HTTPD_SUPPORT_11_KEEPALIVE
  ,"Connection: keep-alive\r\nContent-Length: 77\r\n\r\n<html><body><h2>404: The requested file cannot be found.</h2></body></html>\r\n"
 #endif
+ ,"Cache-Control: max-age=31536000\r\nExpires: Tue, 01 Jan 2030 00:00:00 GMT\r\n",
+ "HTTP/1.0 304 Not Modified\r\n",
+ "HTTP/1.0 302 Found\r\n",
 };
 
 /* Indexes into the g_psHTTPHeaderStrings array */
@@ -52,6 +55,15 @@ static const char * const g_psHTTPHeaderStrings[] =
 #define DEFAULT_404_HTML        13 /* default 404 body */
 #if LWIP_HTTPD_SUPPORT_11_KEEPALIVE
 #define DEFAULT_404_HTML_PERSISTENT 14 /* default 404 body, but including Connection: keep-alive */
+#endif
+#if LWIP_HTTPD_SUPPORT_11_KEEPALIVE
+#define CACHE_CONTROL_MAX_AGE   15 /* file expires in 1 year */
+#define HTTP_HDR_NOT_MODIFIED   16 /* file not modified */
+#define HTTP_HDR_FOUND			17 /* file not modified */
+#else
+#define CACHE_CONTROL_MAX_AGE   14 /* file expires in 1 year */
+#define HTTP_HDR_NOT_MODIFIED   15 /* file not modified */
+#define HTTP_HDR_FOUND          16 /* file not modified */
 #endif
 
 #define HTTP_CONTENT_TYPE(contenttype) "Content-Type: "contenttype"\r\n\r\n"

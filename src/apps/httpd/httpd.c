@@ -182,12 +182,14 @@ static char http_uri_buf[LWIP_HTTPD_URI_BUF_LEN+1];
 /* The number of individual strings that comprise the headers sent before each
  * requested file.
  */
-#define NUM_FILE_HDR_STRINGS 5
+#define NUM_FILE_HDR_STRINGS 7
 #define HDR_STRINGS_IDX_HTTP_STATUS          0 /* e.g. "HTTP/1.0 200 OK\r\n" */
 #define HDR_STRINGS_IDX_SERVER_NAME          1 /* e.g. "Server: "HTTPD_SERVER_AGENT"\r\n" */
 #define HDR_STRINGS_IDX_CONTENT_LEN_KEPALIVE 2 /* e.g. "Content-Length: xy\r\n" and/or "Connection: keep-alive\r\n" */
 #define HDR_STRINGS_IDX_CONTENT_LEN_NR       3 /* the byte count, when content-length is used */
-#define HDR_STRINGS_IDX_CONTENT_TYPE         4 /* the content type (or default answer content type including default document) */
+#define HDR_STRINGS_IDX_ETAG                 4 /* e.g. "ETag: "2073041041"" */
+#define HDR_STRINGS_IDX_CACHE_CONTROL_MAX_AGE 5 /* e.g. "Cache-Control: max-age=31536000\r\nExpires: Tue, 01 Jan 2030 00:00:00 GMT\r\n" */
+#define HDR_STRINGS_IDX_CONTENT_TYPE         6 /* the content type (or default answer content type including default document) */
 
 /* The dynamically generated Content-Length buffer needs space for CRLF + NULL */
 #define LWIP_HTTPD_MAX_CONTENT_LEN_OFFSET 3
@@ -822,6 +824,10 @@ get_tag_insert(struct http_state *hs)
 #endif /* LWIP_HTTPD_SSI */
 
 #if LWIP_HTTPD_DYNAMIC_HEADERS
+
+char * getETagHeader(const void * const pextension);
+
+
 /**
  * Generate the relevant HTTP headers for the given filename and write
  * them into the supplied buffer.
@@ -869,6 +875,12 @@ get_http_headers(struct http_state *hs, const char *uri)
     hs->hdrs[HDR_STRINGS_IDX_HTTP_STATUS] = g_psHTTPHeaderStrings[HTTP_HDR_BAD_REQUEST];
   } else if (strstr(uri, "501")) {
     hs->hdrs[HDR_STRINGS_IDX_HTTP_STATUS] = g_psHTTPHeaderStrings[HTTP_HDR_NOT_IMPL];
+  } else if (strstr(uri, "304")) {
+    hs->hdrs[HDR_STRINGS_IDX_HTTP_STATUS] = g_psHTTPHeaderStrings[HTTP_HDR_NOT_MODIFIED];
+    hs->hdrs[HDR_STRINGS_IDX_CACHE_CONTROL_MAX_AGE] = g_psHTTPHeaderStrings[CACHE_CONTROL_MAX_AGE];
+    hs->hdr_index = 0;
+    hs->hdr_pos = 0;
+    return;
   } else {
     hs->hdrs[HDR_STRINGS_IDX_HTTP_STATUS] = g_psHTTPHeaderStrings[HTTP_HDR_OK];
   }
@@ -903,6 +915,14 @@ get_http_headers(struct http_state *hs, const char *uri)
   /* Reinstate the parameter marker if there was one in the original URI. */
   if (vars) {
     *vars = '?';
+  }
+
+  if (hs->handle && hs->handle->is_custom_file){
+    char * const eTagHeader = getETagHeader(hs->handle->pextension);
+    if (eTagHeader != NULL) {
+      hs->hdrs[HDR_STRINGS_IDX_ETAG] = eTagHeader;
+      hs->hdrs[HDR_STRINGS_IDX_CACHE_CONTROL_MAX_AGE] = g_psHTTPHeaderStrings[CACHE_CONTROL_MAX_AGE];
+    }
   }
 
 #if LWIP_HTTPD_OMIT_HEADER_FOR_EXTENSIONLESS_URI
