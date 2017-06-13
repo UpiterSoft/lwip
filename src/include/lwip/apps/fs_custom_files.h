@@ -20,19 +20,19 @@ typedef enum {
 } eCustomFileType;
 
 typedef struct fs_pextension {
+	enum {
+		ETAG_HEADER_BUFFER_SIZE = 25,
+	};
 	  FIL * fileObject;
 	  PostResponse *jsonResponse;
+	  char ETagHeaderBuffer[ETAG_HEADER_BUFFER_SIZE];
 	  uint32_t ETag;
 	  eCustomFileType type;
 	  fs_pextension (
 			  FIL* const fObj,
 			  PostResponse* const response,
 			  uint32_t const tag,
-			  eCustomFileType const t):
-				  fileObject(fObj),
-				  jsonResponse(response),
-				  ETag(tag),
-				  type(t) {}
+			  eCustomFileType const t);
 } fs_pextension_t;
 
 #ifdef __cplusplus
@@ -42,6 +42,8 @@ extern "C" {
 int fs_open_custom(struct fs_file *file, const char *name);
 void fs_close_custom(struct fs_file *file);
 int fs_read_custom(struct fs_file *file, char *buffer, int count);
+
+char * getETagHeader(void * const pextension);
 
 #ifdef __cplusplus
 }

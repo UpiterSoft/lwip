@@ -64,6 +64,23 @@ static void initFileStruct(struct fs_file *const file, PostResponse* const respo
 	file->data = NULL;				// data is not exists, for now
 }
 
+
+fs_pextension::fs_pextension (
+		  FIL* const fObj,
+		  PostResponse* const response,
+		  uint32_t const tag,
+		  eCustomFileType const t):
+			  fileObject(fObj),
+			  jsonResponse(response),
+			  ETag(tag),
+			  type(t) {
+	if (ETag != 0) {
+		snprintf(&ETagHeaderBuffer[0], ETAG_HEADER_BUFFER_SIZE, "ETag: \"%u\"\r\n", ETag);
+	} else {
+		ETagHeaderBuffer[0] = '\0';
+	}
+}
+
 extern "C"
 int fs_open_custom(struct fs_file *file, const char *name)
 {
@@ -272,4 +289,20 @@ fs_wait_read_custom(struct fs_file *file, fs_wait_cb callback_fn, void *callback
   return 0;
 }
 #endif // LWIP_HTTPD_FS_ASYNC_READ
+
+
+extern "C"
+char * getETagHeader(void * const pextension) {
+	if (pextension != nullptr) {
+	    fs_pextension_t * const extra = (fs_pextension_t *)pextension;
+	    if ((extra->type == CUSTOM_FILE_SD) && (extra->ETag != 0)) {
+	      return extra->ETagHeaderBuffer;
+	    }
+	}
+	return nullptr;
+}
+
+
+
+
 
