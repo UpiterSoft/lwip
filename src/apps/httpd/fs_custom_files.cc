@@ -129,11 +129,19 @@ int fs_open_custom(struct fs_file *file, const char *name)
 	/* Open file */
 	fr = f_open(fil, (const TCHAR*)cfilePath, FA_READ);
 
-	if (fr != FR_OK)
-	{
+	if (fr != FR_OK) {
 		MY_PRINT(("open file %s %d error\n\r", name, fr));
-		delete fil;
-		return 0;
+		enum {
+			BUFFER_SIZE = 20,
+		};
+		char file_404_path[BUFFER_SIZE];
+		snprintf(file_404_path, BUFFER_SIZE, "%s%s", WebFolder, "/404.htm");
+		fr = f_open(fil, file_404_path, FA_READ);
+		if (fr != FR_OK) {
+			MY_PRINT(("404 not found\n\r"));
+			delete fil;
+			return 0;
+		}
 	}
 
 
