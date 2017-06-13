@@ -106,6 +106,9 @@
 #include <stdlib.h> /* atoi */
 #include <stdio.h>
 
+
+u16_t httpGetMaxWriteLen(struct altcp_pcb *pcb);
+
 #if LWIP_TCP && LWIP_CALLBACK_API
 
 /** Minimum length for a valid HTTP/0.9 request: "GET /\r\n" -> 7 bytes */

@@ -130,6 +130,9 @@ extern signed long memused;
 
 #define HTTP_IS_HDR_VOLATILE(hs, ptr) TCP_WRITE_FLAG_COPY
 
+/* Define this to a function that returns the maximum amount of data to enqueue.*/
+#define HTTPD_MAX_WRITE_LEN(pcb) httpGetMaxWriteLen(pcb)
+
 #ifdef SIMULATION
 #include "lwipopts_sim.h"
 #else
