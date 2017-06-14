@@ -109,9 +109,6 @@
 #include <stdlib.h> /* atoi */
 #include <stdio.h>
 
-
-u16_t httpGetMaxWriteLen(struct altcp_pcb *pcb);
-
 #if LWIP_TCP && LWIP_CALLBACK_API
 
 /** Minimum length for a valid HTTP/0.9 request: "GET /\r\n" -> 7 bytes */
@@ -827,10 +824,6 @@ get_tag_insert(struct http_state *hs)
 #endif /* LWIP_HTTPD_SSI */
 
 #if LWIP_HTTPD_DYNAMIC_HEADERS
-
-char * getETagHeader(const void * const pextension);
-
-
 /**
  * Generate the relevant HTTP headers for the given filename and write
  * them into the supplied buffer.

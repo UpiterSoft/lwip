@@ -133,6 +133,8 @@ extern signed long memused;
 /* Define this to a function that returns the maximum amount of data to enqueue.*/
 #define HTTPD_MAX_WRITE_LEN(pcb) httpGetMaxWriteLen(pcb)
 
+#define LWIP_HOOK_FILENAME <lwip/lwip_hooks.h>
+
 #ifdef SIMULATION
 #include "lwipopts_sim.h"
 #else
