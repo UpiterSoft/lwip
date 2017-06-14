@@ -192,47 +192,6 @@ static void sockaddr_to_ipaddr_port(const struct sockaddr* sockaddr, ip_addr_t* 
 #define LWIP_SO_SNDRCVTIMEO_GET_MS(optval) ((((const struct timeval *)(optval))->tv_sec * 1000U) + (((const struct timeval *)(optval))->tv_usec / 1000U))
 #endif
 
-#define NUM_SOCKETS MEMP_NUM_NETCONN
-
-/** This is overridable for the rare case where more than 255 threads
- * select on the same socket...
- */
-#ifndef SELWAIT_T
-#define SELWAIT_T u8_t
-#endif
-
-union lwip_sock_lastdata {
-  struct netbuf *netbuf;
-  struct pbuf *pbuf;
-};
-
-/** Contains all internal pointers and states used for a socket */
-struct lwip_sock {
-  /** sockets currently are built on netconns, each socket has one netconn */
-  struct netconn *conn;
-  /** data that was left from the previous read */
-  union lwip_sock_lastdata lastdata;
-#if LWIP_SOCKET_SELECT
-  /** number of times data was received, set by event_callback(),
-      tested by the receive and select functions */
-  s16_t rcvevent;
-  /** number of times data was ACKed (free send buffer), set by event_callback(),
-      tested by select */
-  u16_t sendevent;
-  /** error happened for this socket, set by event_callback(), tested by select */
-  u16_t errevent;
-  /** counter of how many threads are waiting for this socket using select */
-  SELWAIT_T select_waiting;
-#endif /* LWIP_SOCKET_SELECT */
-#if LWIP_NETCONN_FULLDUPLEX
-  /* counter of how many threads are using a struct lwip_sock (not the 'int') */
-  u8_t fd_used;
-  /* status of pending close/delete actions */
-  u8_t fd_free_pending;
-#define LWIP_SOCK_FD_FREE_TCP  1
-#define LWIP_SOCK_FD_FREE_FREE 2
-#endif
-};
 
 #if LWIP_NETCONN_SEM_PER_THREAD
 #define SELECT_SEM_T        sys_sem_t*
@@ -414,15 +373,31 @@ done_socket(struct lwip_sock *sock)
 
 /* Translate a socket 'int' into a pointer (only fails if the index is invalid) */
 static struct lwip_sock *
-tryget_socket_unconn(int fd)
+tryget_socket_unconn_nouse(int fd)
 {
   int s = fd - LWIP_SOCKET_OFFSET;
   if ((s < 0) || (s >= NUM_SOCKETS)) {
     LWIP_DEBUGF(SOCKETS_DEBUG, ("tryget_socket_unconn(%d): invalid\n", fd));
     return NULL;
   }
-  sock_inc_used(&sockets[s]);
   return &sockets[s];
+}
+
+struct lwip_sock*
+lwip_socket_dbg_get_socket(int fd)
+{
+  return tryget_socket_unconn_nouse(fd);
+}
+
+/* Translate a socket 'int' into a pointer (only fails if the index is invalid) */
+static struct lwip_sock *
+tryget_socket_unconn(int fd)
+{
+  struct lwip_sock *ret = tryget_socket_unconn_nouse(fd);
+  if (ret != NULL) {
+    sock_inc_used(ret);
+  }
+  return ret;
 }
 
 /**
@@ -1791,7 +1766,7 @@ lwip_select_inc_sockets_used_set(int maxfdp, fd_set *fdset, fd_set *used_sockets
         SYS_ARCH_PROTECT(lev);
         sock = tryget_socket_unconn(i);
         if (sock != NULL) {
-          sock_inc_used(sock);
+          /* leave the socket used until released by lwip_select_dec_sockets_used */
           FD_SET(i, used_sockets);
         }
         SYS_ARCH_UNPROTECT(lev);
@@ -1822,7 +1797,7 @@ lwip_select_dec_sockets_used(int maxfdp, fd_set *used_sockets)
   for (i = LWIP_SOCKET_OFFSET; i < maxfdp; i++) {
     /* if this FD is not in the set, continue */
     if (FD_ISSET(i, used_sockets)) {
-      struct lwip_sock *sock = tryget_socket_unconn(i);
+      struct lwip_sock *sock = tryget_socket_unconn_nouse(i);
       LWIP_ASSERT("socket gone at the end of select", sock != NULL);
       if (sock != NULL) {
         done_socket(sock);

@@ -65,7 +65,7 @@
 #include "lwip/altcp_tcp.h"
 #include "lwip/altcp_tls.h"
 
-#include <string.h>
+#include <string.h> /* strnlen, memcpy */
 #include <stdlib.h>
 
 /** TCP poll interval. Unit is 0.5 sec. */
@@ -194,7 +194,7 @@ enum smtp_session_state {
 
 #ifdef LWIP_DEBUG
 /** State-to-string table for debugging */
-const char *smtp_state_str[] = {
+static const char *smtp_state_str[] = {
   "SMTP_NULL",
   "SMTP_HELO",
   "SMTP_AUTH_PLAIN",
@@ -209,7 +209,7 @@ const char *smtp_state_str[] = {
   "SMTP_CLOSED",
 };
 
-const char *smtp_result_strs[] = {
+static const char *smtp_result_strs[] = {
   "SMTP_RESULT_OK",
   "SMTP_RESULT_ERR_UNKNOWN",
   "SMTP_RESULT_ERR_CONNECT",
@@ -346,12 +346,15 @@ smtp_set_server_addr(const char* server)
 {
   size_t len = 0;
   if (server != NULL) {
-    len = strlen(server);
+    len = strnlen(server, SMTP_MAX_SERVERNAME_LEN); /* strnlen: length WITHOUT terminating 0 byte */
   }
-  if (len > SMTP_MAX_SERVERNAME_LEN) {
-    return ERR_MEM;
+  if (len >= SMTP_MAX_SERVERNAME_LEN) {
+    return ERR_MEM; /* too long or no room for terminating 0 byte */
   }
-  MEMCPY(smtp_server, server, len);
+  if (len != 0) {
+    MEMCPY(smtp_server, server, len);
+  }
+  smtp_server[len] = 0;
   return ERR_OK;
 }
 
@@ -881,7 +884,7 @@ smtp_dns_found(const char* hostname, const ip_addr_t *ipaddr, void *arg)
 #if SMTP_SUPPORT_AUTH_PLAIN || SMTP_SUPPORT_AUTH_LOGIN
 
 /** Table 6-bit-index-to-ASCII used for base64-encoding */
-const u8_t base64_table[] = {
+static const u8_t base64_table[] = {
   'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H',
   'I', 'J', 'K', 'L', 'M', 'N', 'O', 'P',
   'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z',
