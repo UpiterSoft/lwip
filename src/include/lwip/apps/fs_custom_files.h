@@ -17,6 +17,10 @@ typedef enum {
 	CUSTOM_FILE_OFF = 0,
 	CUSTOM_FILE_SD,
 	CUSTOM_FILE_JSON,
+	CUSTOM_FILE_SMALL_PAGES,
+	CUSTOM_FILE_CONFIGS,
+
+	CUSTOM_FILE_MAX_NUM,
 } eCustomFileType;
 
 typedef struct fs_pextension {
