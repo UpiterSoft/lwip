@@ -53,13 +53,18 @@ static tPostRequest * getPostRequest(const char *name) {
 	return nullptr;
 }
 
-static void initFileStruct(struct fs_file *const file, PostResponse* const response) {
-	fs_pextension_t* const extra = new fs_pextension_t(
-			nullptr, response, 0, CUSTOM_FILE_JSON);
+static void initFileStruct(struct fs_file *const file, const int len, eCustomFileType fileType, FIL* const fileObject, const uint32_t eTag, PostResponse* const response) {
+	fs_pextension_t* const extra =
+			new fs_pextension_t(
+					fileObject,
+					response,
+					eTag,
+					fileType
+					);
 
 	file->flags &= ~FS_FILE_FLAGS_HEADER_INCLUDED;	// no "HTTP/1.0 200 OK"
 	file->index = 0;				// position in file to start read with
-	file->len = INT32_MAX;			// file size - we don't know it before we start to make response
+	file->len = len;			// file size - we don't know it before we start to make response
 	file->pextension = extra;		// put extra data to fs_file structure
 	file->data = NULL;				// data is not exists, for now
 }
@@ -96,7 +101,7 @@ int fs_open_custom(struct fs_file *file, const char *name)
 			return 0;
 		}
 
-		initFileStruct(file, request->response);
+		initFileStruct(file, INT32_MAX, CUSTOM_FILE_JSON, nullptr, 0, request->response);
 
 		delete request;
 
@@ -111,7 +116,7 @@ int fs_open_custom(struct fs_file *file, const char *name)
 			return 0;
 		}
 
-		initFileStruct(file, response);
+		initFileStruct(file, INT32_MAX, CUSTOM_FILE_JSON, nullptr, 0, response);
 
 		return 1;
 	}
@@ -161,15 +166,7 @@ int fs_open_custom(struct fs_file *file, const char *name)
 		}
 	}
 
-
-	fs_pextension_t* const extra = new fs_pextension_t(
-			fil, nullptr, getFileETag(cfilePath), CUSTOM_FILE_SD);
-
-	file->flags &= ~FS_FILE_FLAGS_HEADER_INCLUDED;	// no "HTTP/1.0 200 OK" in file data
-	file->index = 0;				// position in file to start read with
-	file->len = f_size(fil);		// file size
-	file->pextension = extra;		// put extra data to fs_file structure
-	file->data = NULL;				// data is on sd-card
+	initFileStruct(file, f_size(fil), CUSTOM_FILE_SD, fil, getFileETag(cfilePath), nullptr);
 
 	MY_PRINT(("opened file %s\nsize %d\nptr %d\r\n",name, file->len, file));
 
