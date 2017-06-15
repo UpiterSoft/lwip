@@ -27,11 +27,11 @@ typedef struct fs_pextension {
 	enum {
 		ETAG_HEADER_BUFFER_SIZE = 25,
 	};
-	  FIL * fileObject;
-	  PostResponse *jsonResponse;
+	  FIL * const fileObject;
+	  PostResponse * const jsonResponse;
 	  char ETagHeaderBuffer[ETAG_HEADER_BUFFER_SIZE];
-	  uint32_t ETag;
-	  eCustomFileType type;
+	  const uint32_t ETag;
+	  const eCustomFileType type;
 	  fs_pextension (
 			  FIL* const fObj,
 			  PostResponse* const response,

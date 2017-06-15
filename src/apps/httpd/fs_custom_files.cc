@@ -79,11 +79,92 @@ fs_pextension::fs_pextension (
 			  jsonResponse(response),
 			  ETag(tag),
 			  type(t) {
-	if (ETag != 0) {
+	if ((ETag != 0) && (type == CUSTOM_FILE_SD)) {
 		snprintf(&ETagHeaderBuffer[0], ETAG_HEADER_BUFFER_SIZE, "ETag: \"%u\"\r\n", ETag);
 	} else {
 		ETagHeaderBuffer[0] = '\0';
 	}
+}
+
+static const char *const getNormalizedFilePath(const char* const name) {
+	const char * normalizedName = convertFilePath(name);
+	size_t filePathSize = strlen(WebFolder) + strlen(normalizedName);
+	char * filePath = stringBufferAlloc(filePathSize + 1);
+
+	sprintf(filePath, "%s%s", WebFolder, normalizedName);
+	return filePath;
+}
+
+static eCustomFileType getFileType(const char* const fileName) {
+	const char * fileUri[] = {
+			nullptr,
+			nullptr,
+			jsonResponseUri,
+			smallPageUri,
+			"/configs/",
+	};
+
+	for (uint8_t i = CUSTOM_FILE_SD; i < CUSTOM_FILE_MAX_NUM; i++) {
+		const char* const str = fileUri[i];
+		if ((str != nullptr) && (strncmp(fileName, str, strlen(str)) == 0)) {
+			return (eCustomFileType)i;
+		}
+	}
+
+	return CUSTOM_FILE_SD;
+}
+
+static int initVirtualFileStruct(struct fs_file * const file, const eCustomFileType fileType, PostResponse* const response) {
+	if (response == nullptr) {
+		return 0;
+	}
+
+	initFileStruct(file, INT32_MAX, fileType, nullptr, 0, response);
+	return 1;
+}
+
+static int initJSONResponse(struct fs_file * const file, const char* const name) {
+	tPostRequest * const request = getPostRequest(name);
+
+	if (request == nullptr) {
+		return 0;
+	}
+
+	PostResponse* const response = request->response;
+	delete request;
+
+	return initVirtualFileStruct(file, CUSTOM_FILE_JSON, response);
+}
+
+static int initSmallPageResponse(struct fs_file * const file, const char* const name) {
+	PostResponse* const response = SmallPages::Create(name);
+
+	if (response == nullptr) {
+		return 0;
+	}
+
+	return initVirtualFileStruct(file, CUSTOM_FILE_SMALL_PAGES, response);
+}
+
+static int openSDFile(struct fs_file * const file, const char* const name) {
+	FIL * fileObject = new FIL;       /* File object */
+	FRESULT fr;    				/* FatFs return code */
+
+	MY_PRINT(("opening file path %s\n\r", filePath));
+	/* Open file */
+	fr = f_open(fileObject, (const TCHAR*)name, FA_READ);
+
+	if (fr != FR_OK) {
+		MY_PRINT(("open file %s %d error\n\r", name, fr));
+		delete fileObject;
+		return 0;
+	}
+
+	initFileStruct(file, f_size(fileObject), CUSTOM_FILE_SD, fileObject, getFileETag(name), nullptr);
+
+	MY_PRINT(("opened file %s\nsize %d\nptr %d\r\n",name, file->len, file));
+
+	return 1;
 }
 
 extern "C"
@@ -91,86 +172,18 @@ int fs_open_custom(struct fs_file *file, const char *name)
 {
 	PRINT_LOG(CFG_DEBUG_LOG_NET, LOG_LEVEL_LOW_PRIORITY, "open %p '%s'\r\n", file, name);
 
-	file->pextension = nullptr;
-
-	if (strncmp(name, jsonResponseUri, strlen(jsonResponseUri)) == 0)
-	{
-		tPostRequest * const request = getPostRequest(name);
-
-		if (request == nullptr) {
-			return 0;
-		}
-
-		initFileStruct(file, INT32_MAX, CUSTOM_FILE_JSON, nullptr, 0, request->response);
-
-		delete request;
-
-		return 1;
+	if ((file == nullptr) || (name == nullptr)) {
+		return 0;
 	}
 
-	if (strncmp(name, smallPageUri, strlen(smallPageUri)) == 0)
-	{
-		PostResponse* const response = SmallPages::Create(name);
-
-		if (response == nullptr) {
-			return 0;
-		}
-
-		initFileStruct(file, INT32_MAX, CUSTOM_FILE_JSON, nullptr, 0, response);
-
-		return 1;
+	switch(getFileType(name)) {
+	case CUSTOM_FILE_JSON			: { return initJSONResponse(file, name);}
+	case CUSTOM_FILE_SMALL_PAGES	: { return initSmallPageResponse(file, name);}
+	case CUSTOM_FILE_CONFIGS		: { return openSDFile(file, name);}
+	case CUSTOM_FILE_SD				: { return openSDFile(file, getNormalizedFilePath(name));}
 	}
 
-
-    if (strlen(name)<=4){
-    	PRINT_LOG(CFG_DEBUG_LOG_NET, LOG_LEVEL_LOW_PRIORITY, "Small name '%s' - %i\r\n", name, strlen(name));
-    }
-
-    const char * cfilePath;
-
-    if ( 0 == strncmp(name, "/configs/", 9) ){
-  //  	if (LoginSession::isExpert(session_id)){
-    		cfilePath = name;
-    //	} else {
-    //		file->fileObject = NULL;
-    //		return 0;
-    //	}
-    } else {
-		const char * normalizedName = convertFilePath(name);
-		size_t filePathSize = strlen(WebFolder) + strlen(normalizedName);
-		char * filePath = stringBufferAlloc(filePathSize + 1);
-
-		sprintf(filePath, "%s%s", WebFolder, normalizedName);
-		cfilePath = filePath;
-    }
-
-	FIL * fil = new FIL;       /* File object */
-	FRESULT fr;    				/* FatFs return code */
-
-	MY_PRINT(("opening file path %s\n\r", filePath));
-	/* Open file */
-	fr = f_open(fil, (const TCHAR*)cfilePath, FA_READ);
-
-	if (fr != FR_OK) {
-		MY_PRINT(("open file %s %d error\n\r", name, fr));
-		enum {
-			BUFFER_SIZE = 20,
-		};
-		char file_404_path[BUFFER_SIZE];
-		snprintf(file_404_path, BUFFER_SIZE, "%s%s", WebFolder, "/404.htm");
-		fr = f_open(fil, file_404_path, FA_READ);
-		if (fr != FR_OK) {
-			MY_PRINT(("404 not found\n\r"));
-			delete fil;
-			return 0;
-		}
-	}
-
-	initFileStruct(file, f_size(fil), CUSTOM_FILE_SD, fil, getFileETag(cfilePath), nullptr);
-
-	MY_PRINT(("opened file %s\nsize %d\nptr %d\r\n",name, file->len, file));
-
-	return 1;
+	return 0;
 }
 
 extern "C"
@@ -179,22 +192,19 @@ void fs_close_custom(struct fs_file *file)
 	PRINT_LOG(CFG_DEBUG_LOG_NET, LOG_LEVEL_LOW_PRIORITY, "close %p\r\n", file);
 	fs_pextension_t* const extra = (fs_pextension_t*)file->pextension;
 
+	if (extra == nullptr) {
+		return;
+	}
+
 	switch (extra->type) {
-	case CUSTOM_FILE_SD:
-	{
-		if (extra->fileObject != nullptr)
-		{
-			MY_PRINT(("closing file %d\r\n", file));
-			f_close(extra->fileObject);
-			delete extra->fileObject;
-			extra->fileObject = nullptr;
-		}
+	case CUSTOM_FILE_SD: {
+		MY_PRINT(("closing file %d\r\n", file));
+		f_close(extra->fileObject);
+		delete extra->fileObject;
 		break;
 	}
-	case CUSTOM_FILE_JSON:
-	{
+	case CUSTOM_FILE_JSON: {
 		delete extra->jsonResponse;
-		extra->jsonResponse = nullptr;
 		break;
 	}
 	}
@@ -299,7 +309,11 @@ char * getETagHeader(void * const pextension) {
 	return nullptr;
 }
 
-
-
-
-
+extern "C"
+void setCookieSessionID(void * const pextension, const uint32_t session_id) {
+   	fs_pextension * extra = (fs_pextension*)(pextension);
+   	if ((extra->type == CUSTOM_FILE_JSON) &&
+   	    (extra->jsonResponse != nullptr)) {
+       extra->jsonResponse->setCookieSessionID(session_id);
+   	}
+}
