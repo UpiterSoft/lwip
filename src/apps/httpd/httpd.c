@@ -278,6 +278,8 @@ struct http_state {
   u8_t post_finished;
 #endif /* LWIP_HTTPD_POST_MANUAL_WND */
 #endif /* LWIP_HTTPD_SUPPORT_POST*/
+
+  uint32_t session_id;
 };
 
 #if HTTPD_USE_MEM_POOL
@@ -1700,6 +1702,7 @@ http_handle_post_finished(struct http_state *hs)
   return http_find_file(hs, http_uri_buf, 0);
 }
 
+
 /** Pass received POST body data to the application and correctly handle
  * returning a response document or closing the connection.
  * ATTENTION: The application is responsible for the pbuf now, so don't free it!
@@ -1741,7 +1744,13 @@ http_post_rxpbuf(struct http_state *hs, struct pbuf *p)
     }
 #endif /* LWIP_HTTPD_SUPPORT_POST && LWIP_HTTPD_POST_MANUAL_WND */
     /* application error or POST finished */
-    return http_handle_post_finished(hs);
+    err_t e = http_handle_post_finished(hs);
+
+    if (hs->file_handle.is_custom_file){
+      setCookieSessionID(hs->handle->pextension, hs->session_id);
+    }
+
+    return e;
   }
 
   return ERR_OK;
@@ -2051,6 +2060,27 @@ http_parse_request(struct pbuf *inp, struct http_state *hs, struct altcp_pcb *pc
           uri[uri_len] = 0;
           LWIP_DEBUGF(HTTPD_DEBUG, ("Received \"%s\" request for URI: \"%s\"\n",
                       data, uri));
+
+ 		  char * header = sp2+1;
+
+ 		  int32_t sessid = 0;
+ 		  const char* sess_id_str = "session_id=";
+
+ 		  do{
+ 				char * cookie = strstr(header, "Cookie:");
+ 				if (!cookie)
+ 					break;
+ 				char * session = strstr(header, sess_id_str);
+ 				if (!session)
+ 					break;
+ 				session += strlen(sess_id_str);
+ 				sessid = atoi(session);
+ 		  } while(0);
+
+ 		  hs->session_id = sessid;
+
+
+
 #if LWIP_HTTPD_SUPPORT_POST
           if (is_post) {
 #if LWIP_HTTPD_SUPPORT_REQUESTLIST
@@ -2202,6 +2232,11 @@ http_find_file(struct http_state *hs, const char *uri, int is_09)
     err = fs_open(&hs->file_handle, uri);
     if (err == ERR_OK) {
        file = &hs->file_handle;
+
+       if (hs->file_handle.is_custom_file){
+         setCookieSessionID(hs->handle->pextension, hs->session_id);
+       }
+
     } else {
       file = http_get_404_file(hs, &uri);
     }
