@@ -58,7 +58,7 @@ extern signed long memused;
 // buf size divided by 4
 #define HTTP_MEMUSE_LEVEL_2 16*1024
 
-#define HTTP_MEM_RESERVE 6*1024
+#define HTTP_MEM_RESERVE 8*1024
 
 #else //MCU_GROUP_IS_STM32F2
 #error "MCU is not defined"
