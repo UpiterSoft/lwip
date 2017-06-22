@@ -10,6 +10,18 @@
 #include "lwip/altcp.h"
 #include "lwip/altcp_tcp.h"
 
+#ifndef HTTP_MEM_RESERVE
+#define HTTP_MEM_RESERVE	(4*1024)
+#endif
+
+#ifndef HTTP_MEMUSE_LEVEL_1
+#define HTTP_MEMUSE_LEVEL_1	(8*1024)
+#endif
+
+#ifndef HTTP_MEMUSE_LEVEL_2
+#define HTTP_MEMUSE_LEVEL_2	(12*1024)
+#endif
+
 extern signed long memused;
 extern int last_free_mem;
 
