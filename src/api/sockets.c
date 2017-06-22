@@ -117,7 +117,7 @@ static void sockaddr_to_ipaddr_port(const struct sockaddr* sockaddr, ip_addr_t* 
        ((((name)->sa_family == AF_INET) && !(NETCONNTYPE_ISIPV6((sock)->conn->type))) || \
        (((name)->sa_family == AF_INET6) && (NETCONNTYPE_ISIPV6((sock)->conn->type))))
 #define IPADDR_PORT_TO_SOCKADDR(sockaddr, ipaddr, port) do { \
-    if (((ipaddr) && IP_IS_ANY_TYPE_VAL(*ipaddr)) || IP_IS_V6(ipaddr)) { \
+    if (IP_IS_ANY_TYPE_VAL(*ipaddr) || IP_IS_V6_VAL(*ipaddr)) { \
       IP6ADDR_PORT_TO_SOCKADDR((struct sockaddr_in6*)(void*)(sockaddr), ip_2_ip6(ipaddr), port); \
     } else { \
       IP4ADDR_PORT_TO_SOCKADDR((struct sockaddr_in*)(void*)(sockaddr), ip_2_ip4(ipaddr), port); \
@@ -947,6 +947,7 @@ lwip_sock_make_addr(struct netconn *conn, ip_addr_t *fromaddr, u16_t port,
 
   LWIP_UNUSED_ARG(conn);
 
+  LWIP_ASSERT("fromaddr != NULL", fromaddr != NULL);
   LWIP_ASSERT("from != NULL", from != NULL);
   LWIP_ASSERT("fromlen != NULL", fromlen != NULL);
 
@@ -989,7 +990,7 @@ lwip_recv_tcp_from(struct lwip_sock *sock, struct sockaddr *from, socklen_t *fro
     ip_addr_t tmpaddr;
     netconn_getaddr(sock->conn, &tmpaddr, &port, 0);
     LWIP_DEBUGF(SOCKETS_DEBUG, ("%s(%d):  addr=", dbg_fn, dbg_s));
-    ip_addr_debug_print(SOCKETS_DEBUG, &tmpaddr);
+    ip_addr_debug_print_val(SOCKETS_DEBUG, tmpaddr);
     LWIP_DEBUGF(SOCKETS_DEBUG, (" port=%"U16_F" len=%d\n", port, (int)dbg_ret));
     if (from && fromlen) {
       return lwip_sock_make_addr(sock->conn, &tmpaddr, port, from, fromlen);
@@ -1061,7 +1062,7 @@ lwip_recvfrom_udp_raw(struct lwip_sock *sock, int flags, struct msghdr *msg, u16
 #endif /* !SOCKETS_DEBUG */
   {
     LWIP_DEBUGF(SOCKETS_DEBUG, ("lwip_recvfrom_udp_raw(%d):  addr=", dbg_s));
-    ip_addr_debug_print(SOCKETS_DEBUG, netbuf_fromaddr(buf));
+    ip_addr_debug_print_val(SOCKETS_DEBUG, *netbuf_fromaddr(buf));
     LWIP_DEBUGF(SOCKETS_DEBUG, (" port=%"U16_F" len=%d\n", netbuf_fromport(buf), copied));
     if (msg->msg_name && msg->msg_namelen) {
       lwip_sock_make_addr(sock->conn, netbuf_fromaddr(buf), netbuf_fromport(buf),
@@ -1538,7 +1539,7 @@ lwip_sendto(int s, const void *data, size_t size, int flags,
 
   LWIP_DEBUGF(SOCKETS_DEBUG, ("lwip_sendto(%d, data=%p, short_size=%"U16_F", flags=0x%x to=",
               s, data, short_size, flags));
-  ip_addr_debug_print(SOCKETS_DEBUG, &buf.addr);
+  ip_addr_debug_print_val(SOCKETS_DEBUG, buf.addr);
   LWIP_DEBUGF(SOCKETS_DEBUG, (" port=%"U16_F"\n", remote_port));
 
   /* make the buffer point to the data that should be sent */

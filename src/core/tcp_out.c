@@ -835,9 +835,9 @@ tcp_enqueue_flags(struct tcp_pcb *pcb, u8_t flags)
 #endif /* LWIP_WND_SCALE */
   }
 #if LWIP_TCP_TIMESTAMPS
-  if ((pcb->flags & TF_TIMESTAMP)) {
+  if ((pcb->flags & TF_TIMESTAMP) || ((flags & TCP_SYN) && (pcb->state != SYN_RCVD))) {
     /* Make sure the timestamp option is only included in data segments if we
-       agreed about it with the remote host. */
+       agreed about it with the remote host (and in active open SYN segments). */
     optflags |= TF_SEG_OPTS_TS;
   }
 #endif /* LWIP_TCP_TIMESTAMPS */
@@ -1563,7 +1563,7 @@ tcp_keepalive(struct tcp_pcb *pcb)
   struct netif *netif;
 
   LWIP_DEBUGF(TCP_DEBUG, ("tcp_keepalive: sending KEEPALIVE probe to "));
-  ip_addr_debug_print(TCP_DEBUG, &pcb->remote_ip);
+  ip_addr_debug_print_val(TCP_DEBUG, pcb->remote_ip);
   LWIP_DEBUGF(TCP_DEBUG, ("\n"));
 
   LWIP_DEBUGF(TCP_DEBUG, ("tcp_keepalive: tcp_ticks %"U32_F"   pcb->tmr %"U32_F" pcb->keep_cnt_sent %"U16_F"\n",
@@ -1622,7 +1622,7 @@ tcp_zero_window_probe(struct tcp_pcb *pcb)
   struct netif *netif;
 
   LWIP_DEBUGF(TCP_DEBUG, ("tcp_zero_window_probe: sending ZERO WINDOW probe to "));
-  ip_addr_debug_print(TCP_DEBUG, &pcb->remote_ip);
+  ip_addr_debug_print_val(TCP_DEBUG, pcb->remote_ip);
   LWIP_DEBUGF(TCP_DEBUG, ("\n"));
 
   LWIP_DEBUGF(TCP_DEBUG,
