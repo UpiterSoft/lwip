@@ -23,6 +23,14 @@ std::vector<memrec> &memrecs(){
 
 signed long memused = 0;
 
+static void increaseMemused(void * const p, const size_t size) {
+	if (p!=NULL){
+		memrec r = {p, size};
+		memrecs().push_back(r);
+		memused+=size;
+	}
+}
+
 extern "C" {
 
 void* memt_malloc (size_t size){
@@ -31,11 +39,7 @@ void* memt_malloc (size_t size){
 
 	void *p = malloc(size);
 
-	if (p!=NULL){
-		memrec r = {p, size};
-		memrecs().push_back(r);
-		memused+=size;
-	}
+	increaseMemused(p, size);
 
 	DM_changeBlock(dmb);
 
@@ -48,11 +52,7 @@ void* memt_calloc (size_t size, size_t c){
 
 	void *p = calloc(size, c);
 
-	if (p!=NULL){
-		memrec r = {p, size};
-		memrecs().push_back(r);
-		memused+=size;
-	}
+	increaseMemused(p, size);
 
 	DM_changeBlock(dmb);
 
