@@ -203,7 +203,9 @@ void fs_close_custom(struct fs_file *file)
 		delete extra->fileObject;
 		break;
 	}
-	case CUSTOM_FILE_JSON: {
+	case CUSTOM_FILE_JSON:
+	case CUSTOM_FILE_SMALL_PAGES:
+	{
 		delete extra->jsonResponse;
 		break;
 	}
