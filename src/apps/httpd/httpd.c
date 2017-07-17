@@ -2234,7 +2234,7 @@ http_find_file(struct http_state *hs, const char *uri, int is_09)
        file = &hs->file_handle;
 
        if (hs->file_handle.is_custom_file){
-         setCookieSessionID(hs->handle->pextension, hs->session_id);
+         setCookieSessionID(hs->file_handle.pextension, hs->session_id);
        }
 
     } else {
