@@ -48,6 +48,7 @@ void fs_close_custom(struct fs_file *file);
 int fs_read_custom(struct fs_file *file, char *buffer, int count);
 
 char * getETagHeader(void * const pextension);
+const char * getCustomExtension(void * const pextension);
 
 #ifdef __cplusplus
 }

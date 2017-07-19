@@ -835,7 +835,7 @@ get_http_headers(struct http_state *hs, const char *uri)
 {
   size_t content_type;
   char *tmp;
-  char *ext;
+  const char *ext;
   char *vars;
   u8_t add_content_len;
 
@@ -898,6 +898,14 @@ get_http_headers(struct http_state *hs, const char *uri)
     ext = tmp + 1;
     tmp = strchr(ext, '.');
   }
+
+  if (hs->handle && hs->handle->is_custom_file){
+	const char * customExt = getCustomExtension(hs->handle->pextension);
+	if (customExt != NULL){
+      ext = customExt;
+	}
+  }
+
   if (ext != NULL) {
     /* Now determine the content type and add the relevant header for that. */
     for (content_type = 0; content_type < NUM_HTTP_HEADERS; content_type++) {
@@ -2234,7 +2242,7 @@ http_find_file(struct http_state *hs, const char *uri, int is_09)
        file = &hs->file_handle;
 
        if (hs->file_handle.is_custom_file){
-         setCookieSessionID(hs->handle->pextension, hs->session_id);
+         setCookieSessionID(hs->file_handle.pextension, hs->session_id);
        }
 
     } else {

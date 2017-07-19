@@ -203,7 +203,9 @@ void fs_close_custom(struct fs_file *file)
 		delete extra->fileObject;
 		break;
 	}
-	case CUSTOM_FILE_JSON: {
+	case CUSTOM_FILE_JSON:
+	case CUSTOM_FILE_SMALL_PAGES:
+	{
 		delete extra->jsonResponse;
 		break;
 	}
@@ -245,6 +247,7 @@ int fs_read_custom(struct fs_file *file, char *buffer, int count) {
 		return numberOfBytesRead;
 	}
 	case CUSTOM_FILE_JSON:
+	case CUSTOM_FILE_SMALL_PAGES:
 	{
 		DebugTime dtm("readjson", 80);
 
@@ -310,9 +313,20 @@ char * getETagHeader(void * const pextension) {
 }
 
 extern "C"
+const char * getCustomExtension(void * const pextension) {
+	if (pextension != nullptr) {
+	    fs_pextension_t * const extra = (fs_pextension_t *)pextension;
+	    if (extra->type == CUSTOM_FILE_SMALL_PAGES) {
+	        return "html";
+	    }
+	}
+	return nullptr;
+}
+
+extern "C"
 void setCookieSessionID(void * const pextension, const uint32_t session_id) {
    	fs_pextension * extra = (fs_pextension*)(pextension);
-   	if ((extra->type == CUSTOM_FILE_JSON) &&
+   	if (((extra->type == CUSTOM_FILE_JSON) || (extra->type == CUSTOM_FILE_SMALL_PAGES)) &&
    	    (extra->jsonResponse != nullptr)) {
        extra->jsonResponse->setCookieSessionID(session_id);
    	}
