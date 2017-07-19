@@ -71,7 +71,7 @@
    "The Dynamic and/or Private Ports are those from 49152 through 65535" */
 #define TCP_LOCAL_PORT_RANGE_START        0xc000
 #define TCP_LOCAL_PORT_RANGE_END          0xffff
-#define TCP_ENSURE_LOCAL_PORT_RANGE(port) ((u16_t)(((port) & ~TCP_LOCAL_PORT_RANGE_START) + TCP_LOCAL_PORT_RANGE_START))
+#define TCP_ENSURE_LOCAL_PORT_RANGE(port) ((u16_t)(((port) & (u16_t)~TCP_LOCAL_PORT_RANGE_START) + TCP_LOCAL_PORT_RANGE_START))
 #endif
 
 #if LWIP_TCP_KEEPALIVE
@@ -239,7 +239,7 @@ tcp_backlog_accepted(struct tcp_pcb* pcb)
     if (pcb->listener != NULL) {
       LWIP_ASSERT("accepts_pending != 0", pcb->listener->accepts_pending != 0);
       pcb->listener->accepts_pending--;
-      pcb->flags &= ~TF_BACKLOGPEND;
+      tcp_clear_flags(pcb, TF_BACKLOGPEND);
     }
   }
 }
@@ -824,13 +824,13 @@ tcp_update_rcv_ann_wnd(struct tcp_pcb *pcb)
 void
 tcp_recved(struct tcp_pcb *pcb, u16_t len)
 {
-  int wnd_inflation;
+  u32_t wnd_inflation;
 
   /* pcb->state LISTEN not allowed here */
   LWIP_ASSERT("don't call tcp_recved for listen-pcbs",
     pcb->state != LISTEN);
 
-  pcb->rcv_wnd += len;
+  pcb->rcv_wnd = (tcpwnd_size_t)(pcb->rcv_wnd + len);
   if (pcb->rcv_wnd > TCP_WND_MAX(pcb)) {
     pcb->rcv_wnd = TCP_WND_MAX(pcb);
   } else if (pcb->rcv_wnd == 0) {
@@ -1107,7 +1107,8 @@ tcp_slowtmr_start:
            * connect to somebody (i.e., we are in SYN_SENT). */
           if (pcb->state != SYN_SENT) {
             u8_t backoff_idx = LWIP_MIN(pcb->nrtx, sizeof(tcp_backoff)-1);
-            pcb->rto = ((pcb->sa >> 3) + pcb->sv) << tcp_backoff[backoff_idx];
+            int calc_rto = ((pcb->sa >> 3) + pcb->sv) << tcp_backoff[backoff_idx];
+            pcb->rto = (s16_t)LWIP_MIN(calc_rto, 0x7FFF);
           }
 
           /* Reset the retransmission timer. */
@@ -1117,7 +1118,7 @@ tcp_slowtmr_start:
           eff_wnd = LWIP_MIN(pcb->cwnd, pcb->snd_wnd);
           pcb->ssthresh = eff_wnd >> 1;
           if (pcb->ssthresh < (tcpwnd_size_t)(pcb->mss << 1)) {
-            pcb->ssthresh = (pcb->mss << 1);
+            pcb->ssthresh = (tcpwnd_size_t)(pcb->mss << 1);
           }
           pcb->cwnd = pcb->mss;
           LWIP_DEBUGF(TCP_CWND_DEBUG, ("tcp_slowtmr: cwnd %"TCPWNDSIZE_F
@@ -1174,10 +1175,9 @@ tcp_slowtmr_start:
        be retransmitted). */
 #if TCP_QUEUE_OOSEQ
     if (pcb->ooseq != NULL &&
-        (u32_t)tcp_ticks - pcb->tmr >= pcb->rto * TCP_OOSEQ_TIMEOUT) {
-      tcp_segs_free(pcb->ooseq);
-      pcb->ooseq = NULL;
+        (tcp_ticks - pcb->tmr >= (u32_t)pcb->rto * TCP_OOSEQ_TIMEOUT)) {
       LWIP_DEBUGF(TCP_CWND_DEBUG, ("tcp_slowtmr: dropping OOSEQ queued data\n"));
+      tcp_free_ooseq(pcb);
     }
 #endif /* TCP_QUEUE_OOSEQ */
 
@@ -1317,12 +1317,12 @@ tcp_fasttmr_start:
         LWIP_DEBUGF(TCP_DEBUG, ("tcp_fasttmr: delayed ACK\n"));
         tcp_ack_now(pcb);
         tcp_output(pcb);
-        pcb->flags &= ~(TF_ACK_DELAY | TF_ACK_NOW);
+        tcp_clear_flags(pcb, TF_ACK_DELAY | TF_ACK_NOW);
       }
       /* send pending FIN */
       if (pcb->flags & TF_CLOSEPEND) {
         LWIP_DEBUGF(TCP_DEBUG, ("tcp_fasttmr: pending FIN\n"));
-        pcb->flags &= ~(TF_CLOSEPEND);
+        tcp_clear_flags(pcb, TF_CLOSEPEND);
         tcp_close_shutdown_fin(pcb);
       }
 
@@ -1884,9 +1884,8 @@ tcp_pcb_purge(struct tcp_pcb *pcb)
 #if TCP_QUEUE_OOSEQ
     if (pcb->ooseq != NULL) {
       LWIP_DEBUGF(TCP_DEBUG, ("tcp_pcb_purge: data left on ->ooseq\n"));
+      tcp_free_ooseq(pcb);
     }
-    tcp_segs_free(pcb->ooseq);
-    pcb->ooseq = NULL;
 #endif /* TCP_QUEUE_OOSEQ */
 
     /* Stop the retransmission timer as it will expect data on unacked
@@ -1968,7 +1967,7 @@ u16_t
 tcp_eff_send_mss_netif(u16_t sendmss, struct netif *outif, const ip_addr_t *dest)
 {
   u16_t mss_s;
-  s16_t mtu;
+  u16_t mtu;
 
   LWIP_UNUSED_ARG(dest); /* in case IPv6 is disabled */
   
@@ -1994,12 +1993,13 @@ tcp_eff_send_mss_netif(u16_t sendmss, struct netif *outif, const ip_addr_t *dest
 #endif /* LWIP_IPV4 */
 
   if (mtu != 0) {
+    u16_t offset;
 #if LWIP_IPV6
 #if LWIP_IPV4
     if (IP_IS_V6(dest))
 #endif /* LWIP_IPV4 */
     {
-      mss_s = mtu - IP6_HLEN - TCP_HLEN;
+      offset = IP6_HLEN + TCP_HLEN;
     }
 #if LWIP_IPV4
     else
@@ -2007,9 +2007,10 @@ tcp_eff_send_mss_netif(u16_t sendmss, struct netif *outif, const ip_addr_t *dest
 #endif /* LWIP_IPV6 */
 #if LWIP_IPV4
     {
-      mss_s = mtu - IP_HLEN - TCP_HLEN;
+      offset = IP_HLEN + TCP_HLEN;
     }
 #endif /* LWIP_IPV4 */
+    mss_s = (mtu > offset) ? (u16_t)(mtu - offset) : 0;
     /* RFC 1122, chap 4.2.2.6:
      * Eff.snd.MSS = min(SendMSS+20, MMS_S) - TCPhdrsize - IPoptionsize
      * We correct for TCP options in tcp_write(), and don't support IP options.
@@ -2103,6 +2104,21 @@ tcp_tcp_get_tcp_addrinfo(struct tcp_pcb *pcb, int local, ip_addr_t *addr, u16_t 
   }
   return ERR_VAL;
 }
+
+#if TCP_QUEUE_OOSEQ
+/* Free all ooseq pbufs (and possibly reset SACK state) */
+void
+tcp_free_ooseq(struct tcp_pcb *pcb)
+{
+  if (pcb->ooseq) {
+    tcp_segs_free(pcb->ooseq);
+    pcb->ooseq = NULL;
+#if LWIP_TCP_SACK_OUT
+    memset(pcb->rcv_sacks, 0, sizeof(pcb->rcv_sacks));
+#endif /* LWIP_TCP_SACK_OUT */
+  }
+}
+#endif /* TCP_QUEUE_OOSEQ */
 
 #if TCP_DEBUG || TCP_INPUT_DEBUG || TCP_OUTPUT_DEBUG
 /**

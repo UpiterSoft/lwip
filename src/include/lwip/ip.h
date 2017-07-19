@@ -112,7 +112,7 @@ struct ip_globals
   struct netif *current_input_netif;
 #if LWIP_IPV4
   /** Header of the input packet currently being processed. */
-  struct ip_hdr *current_ip4_header;
+  const struct ip_hdr *current_ip4_header;
 #endif /* LWIP_IPV4 */
 #if LWIP_IPV6
   /** Header of the input IPv6 packet currently being processed. */
@@ -148,7 +148,7 @@ extern struct ip_globals ip_data;
 /** Get the IPv4 header of the current packet.
  * This function must only be called from a receive callback (udp_recv,
  * raw_recv, tcp_accept). It will return NULL otherwise. */
-#define ip4_current_header()     ((const struct ip_hdr*)(ip_data.current_ip4_header))
+#define ip4_current_header()     ip_data.current_ip4_header
 /** Get the IPv6 header of the current packet.
  * This function must only be called from a receive callback (udp_recv,
  * raw_recv, tcp_accept). It will return NULL otherwise. */
@@ -177,7 +177,7 @@ extern struct ip_globals ip_data;
 /** Get the IPv4 header of the current packet.
  * This function must only be called from a receive callback (udp_recv,
  * raw_recv, tcp_accept). It will return NULL otherwise. */
-#define ip4_current_header()     ((const struct ip_hdr*)(ip_data.current_ip4_header))
+#define ip4_current_header()     ip_data.current_ip4_header
 /** Always returns FALSE when only supporting IPv4 only */
 #define ip_current_is_v6()        0
 /** Get the transport layer protocol */
@@ -200,7 +200,7 @@ extern struct ip_globals ip_data;
 /** Get the transport layer protocol */
 #define ip_current_header_proto() IP6H_NEXTH(ip6_current_header())
 /** Get the transport layer header */
-#define ip_next_header_ptr()     ((const void*)((const u8_t*)ip6_current_header()))
+#define ip_next_header_ptr()     ((const void*)(((const u8_t*)ip6_current_header()) + ip_current_header_tot_len()))
 /** Source IP6 address of current_header */
 #define ip6_current_src_addr()    (&ip_data.current_iphdr_src)
 /** Destination IP6 address of current_header */
@@ -216,9 +216,9 @@ extern struct ip_globals ip_data;
 /** Gets an IP pcb option (SOF_* flags) */
 #define ip_get_option(pcb, opt)   ((pcb)->so_options & (opt))
 /** Sets an IP pcb option (SOF_* flags) */
-#define ip_set_option(pcb, opt)   ((pcb)->so_options |= (opt))
+#define ip_set_option(pcb, opt)   ((pcb)->so_options = (u8_t)((pcb)->so_options | (opt)))
 /** Resets an IP pcb option (SOF_* flags) */
-#define ip_reset_option(pcb, opt) ((pcb)->so_options &= ~(opt))
+#define ip_reset_option(pcb, opt) ((pcb)->so_options = (u8_t)((pcb)->so_options & ~(opt)))
 
 #if LWIP_IPV4 && LWIP_IPV6
 /**

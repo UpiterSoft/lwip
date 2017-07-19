@@ -833,6 +833,13 @@ tcp_enqueue_flags(struct tcp_pcb *pcb, u8_t flags)
       optflags |= TF_SEG_OPTS_WND_SCALE;
     }
 #endif /* LWIP_WND_SCALE */
+#if LWIP_TCP_SACK_OUT
+    if ((pcb->state != SYN_RCVD) || (pcb->flags & TF_SACK)) {
+      /* In a <SYN,ACK> (sent in state SYN_RCVD), the SACK_PERM option may only
+         be sent if we received a SACK_PERM option from the remote host. */
+      optflags |= TF_SEG_OPTS_SACK_PERM;
+    }
+#endif /* LWIP_TCP_SACK_OUT */
   }
 #if LWIP_TCP_TIMESTAMPS
   if ((pcb->flags & TF_TIMESTAMP) || ((flags & TCP_SYN) && (pcb->state != SYN_RCVD))) {
@@ -916,6 +923,63 @@ tcp_build_timestamp_option(struct tcp_pcb *pcb, u32_t *opts)
 }
 #endif
 
+#if LWIP_TCP_SACK_OUT
+/**
+ * Calculates the number of SACK entries that should be generated.
+ * It takes into account whether TF_SACK flag is set,
+ * the number of SACK entries in tcp_pcb that are valid,
+ * as well as the available options size.
+ *
+ * @param pcb tcp_pcb
+ * @param optlen the length of other TCP options (in bytes)
+ * @return the number of SACK ranges that can be used
+ */
+static u8_t
+tcp_get_num_sacks(struct tcp_pcb *pcb, u8_t optlen)
+{
+  u8_t num_sacks = 0;
+
+  if (pcb->flags & TF_SACK) {
+    u8_t i;
+
+    /* The first SACK takes up 12 bytes (it includes SACK header and two NOP options),
+       each additional one - 8 bytes. */
+    optlen += 12;
+
+    /* Max options size = 40, number of SACK array entries = LWIP_TCP_MAX_SACK_NUM */
+    for (i = 0; (i < LWIP_TCP_MAX_SACK_NUM) && (optlen <= 40) && LWIP_TCP_SACK_VALID(pcb, i); ++i) {
+      ++num_sacks;
+      optlen += 8;
+    }
+  }
+
+  return num_sacks;
+}
+
+/** Build a SACK option (12 or more bytes long) at the specified options pointer)
+ *
+ * @param pcb tcp_pcb
+ * @param opts option pointer where to store the SACK option
+ * @param num_sacks the number of SACKs to store
+ */
+static void
+tcp_build_sack_option(struct tcp_pcb *pcb, u32_t *opts, u8_t num_sacks)
+{
+  u8_t i;
+
+  /* Pad with two NOP options to make everything nicely aligned.
+     We add the length (of just the SACK option, not the NOPs in front of it),
+     which is 2B of header, plus 8B for each SACK. */
+  *(opts++) = PP_HTONL(0x01010500 + 2 + num_sacks * 8);
+
+  for (i = 0; i < num_sacks; ++i) {
+    *(opts++) = lwip_htonl(pcb->rcv_sacks[i].left);
+    *(opts++) = lwip_htonl(pcb->rcv_sacks[i].right);
+  }
+}
+
+#endif
+
 #if LWIP_WND_SCALE
 /** Build a window scale option (3 bytes long) at the specified options pointer)
  *
@@ -941,13 +1005,25 @@ tcp_send_empty_ack(struct tcp_pcb *pcb)
   struct pbuf *p;
   u8_t optlen = 0;
   struct netif *netif;
-#if LWIP_TCP_TIMESTAMPS || CHECKSUM_GEN_TCP
+#if CHECKSUM_GEN_TCP || LWIP_TCP_TIMESTAMPS || LWIP_TCP_SACK_OUT
   struct tcp_hdr *tcphdr;
-#endif /* LWIP_TCP_TIMESTAMPS || CHECKSUM_GEN_TCP */
+#if LWIP_TCP_TIMESTAMPS || LWIP_TCP_SACK_OUT
+  u32_t *opts;
+#if LWIP_TCP_SACK_OUT
+  u8_t num_sacks;
+#endif /* LWIP_TCP_SACK_OUT */
+#endif /* LWIP_TCP_TIMESTAMPS || LWIP_TCP_SACK_OUT */
+#endif /* CHECKSUM_GEN_TCP || LWIP_TCP_TIMESTAMPS || LWIP_TCP_SACK_OUT */
 
 #if LWIP_TCP_TIMESTAMPS
   if (pcb->flags & TF_TIMESTAMP) {
     optlen = LWIP_TCP_OPT_LENGTH(TF_SEG_OPTS_TS);
+  }
+#endif
+
+#if LWIP_TCP_SACK_OUT
+  if ((num_sacks = tcp_get_num_sacks(pcb, optlen)) > 0) {
+    optlen += 4 + num_sacks * 8; /* 4 bytes for header (including 2*NOP), plus 8B for each SACK */
   }
 #endif
 
@@ -958,9 +1034,15 @@ tcp_send_empty_ack(struct tcp_pcb *pcb)
     LWIP_DEBUGF(TCP_OUTPUT_DEBUG, ("tcp_output: (ACK) could not allocate pbuf\n"));
     return ERR_BUF;
   }
-#if LWIP_TCP_TIMESTAMPS || CHECKSUM_GEN_TCP
+
+#if CHECKSUM_GEN_TCP || LWIP_TCP_TIMESTAMPS || LWIP_TCP_SACK_OUT
   tcphdr = (struct tcp_hdr *)p->payload;
-#endif /* LWIP_TCP_TIMESTAMPS || CHECKSUM_GEN_TCP */
+#if LWIP_TCP_TIMESTAMPS || LWIP_TCP_SACK_OUT
+  /* cast through void* to get rid of alignment warnings */
+  opts = (u32_t *)(void *)(tcphdr + 1);
+#endif /* LWIP_TCP_TIMESTAMPS || LWIP_TCP_SACK_OUT */
+#endif /* CHECKSUM_GEN_TCP || LWIP_TCP_TIMESTAMPS || LWIP_TCP_SACK_OUT */
+
   LWIP_DEBUGF(TCP_OUTPUT_DEBUG,
               ("tcp_output: sending ACK for %"U32_F"\n", pcb->rcv_nxt));
 
@@ -969,7 +1051,16 @@ tcp_send_empty_ack(struct tcp_pcb *pcb)
   pcb->ts_lastacksent = pcb->rcv_nxt;
 
   if (pcb->flags & TF_TIMESTAMP) {
-    tcp_build_timestamp_option(pcb, (u32_t *)(tcphdr + 1));
+    tcp_build_timestamp_option(pcb, opts);
+    opts += 3;
+  }
+#endif
+
+#if LWIP_TCP_SACK_OUT
+  if (num_sacks > 0) {
+    tcp_build_sack_option(pcb, opts, num_sacks);
+    /* 1 word for SACKs header (including 2xNOP), and 2 words for each SACK */
+    opts += 1 + num_sacks * 2;
   }
 #endif
 
@@ -995,7 +1086,7 @@ tcp_send_empty_ack(struct tcp_pcb *pcb)
     pcb->flags |= (TF_ACK_DELAY | TF_ACK_NOW);
   } else {
     /* remove ACK flags from the PCB, as we sent an empty ACK now */
-    pcb->flags &= ~(TF_ACK_DELAY | TF_ACK_NOW);
+    tcp_clear_flags(pcb, TF_ACK_DELAY | TF_ACK_NOW);
   }
 
   return err;
@@ -1048,26 +1139,6 @@ tcp_output(struct tcp_pcb *pcb)
      return tcp_send_empty_ack(pcb);
   }
 
-  /* useg should point to last segment on unacked queue */
-  useg = pcb->unacked;
-  if (useg != NULL) {
-    for (; useg->next != NULL; useg = useg->next);
-  }
-
-  netif = tcp_route(pcb, &pcb->local_ip, &pcb->remote_ip);
-  if (netif == NULL) {
-    return ERR_RTE;
-  }
-
-  /* If we don't have a local IP address, we get one from netif */
-  if (ip_addr_isany(&pcb->local_ip)) {
-    const ip_addr_t *local_ip = ip_netif_get_local_ip(netif, &pcb->remote_ip);
-    if (local_ip == NULL) {
-      return ERR_RTE;
-    }
-    ip_addr_copy(pcb->local_ip, *local_ip);
-  }
-
 #if TCP_OUTPUT_DEBUG
   if (seg == NULL) {
     LWIP_DEBUGF(TCP_OUTPUT_DEBUG, ("tcp_output: nothing to send (%p)\n",
@@ -1089,6 +1160,32 @@ tcp_output(struct tcp_pcb *pcb)
                  lwip_ntohl(seg->tcphdr->seqno), pcb->lastack));
   }
 #endif /* TCP_CWND_DEBUG */
+
+  if (seg == NULL) {
+    /* nothing to send: shortcut out of here */
+    goto output_done;
+  }
+
+  /* useg should point to last segment on unacked queue */
+  useg = pcb->unacked;
+  if (useg != NULL) {
+    for (; useg->next != NULL; useg = useg->next);
+  }
+
+  netif = tcp_route(pcb, &pcb->local_ip, &pcb->remote_ip);
+  if (netif == NULL) {
+    return ERR_RTE;
+  }
+
+  /* If we don't have a local IP address, we get one from netif */
+  if (ip_addr_isany(&pcb->local_ip)) {
+    const ip_addr_t *local_ip = ip_netif_get_local_ip(netif, &pcb->remote_ip);
+    if (local_ip == NULL) {
+      return ERR_RTE;
+    }
+    ip_addr_copy(pcb->local_ip, *local_ip);
+  }
+
   /* Check if we need to start the persistent timer when the next unsent segment
    * does not fit within the remaining send window and RTO timer is not running (we
    * have no in-flight data). A traditional approach would fill the remaining window
@@ -1148,7 +1245,7 @@ tcp_output(struct tcp_pcb *pcb)
     }
     pcb->unsent = seg->next;
     if (pcb->state != SYN_SENT) {
-      pcb->flags &= ~(TF_ACK_DELAY | TF_ACK_NOW);
+      tcp_clear_flags(pcb, TF_ACK_DELAY | TF_ACK_NOW);
     }
     snd_nxt = lwip_ntohl(seg->tcphdr->seqno) + TCP_TCPLEN(seg);
     if (TCP_SEQ_LT(pcb->snd_nxt, snd_nxt)) {
@@ -1187,7 +1284,6 @@ tcp_output(struct tcp_pcb *pcb)
     }
     seg = pcb->unsent;
   }
-output_done:
 #if TCP_OVERSIZE
   if (pcb->unsent == NULL) {
     /* last unsent has been removed, reset unsent_oversize */
@@ -1195,7 +1291,8 @@ output_done:
   }
 #endif /* TCP_OVERSIZE */
 
-  pcb->flags &= ~TF_NAGLEMEMERR;
+output_done:
+  tcp_clear_flags(pcb, TF_NAGLEMEMERR);
   return ERR_OK;
 }
 
@@ -1266,6 +1363,16 @@ tcp_output_segment(struct tcp_seg *seg, struct tcp_pcb *pcb, struct netif *netif
     opts += 1;
   }
 #endif
+#if LWIP_TCP_SACK_OUT
+  if (seg->flags & TF_SEG_OPTS_SACK_PERM) {
+    /* Pad with two NOP options to make everything nicely aligned
+     * NOTE: When we send both timestamp and SACK_PERM options,
+     * we could use the first two NOPs before the timestamp to store SACK_PERM option,
+     * but that would complicate the code.
+     */
+    *(opts++) = PP_HTONL(0x01010402);
+  }
+#endif
 
   /* Set retransmission timer running if it is not currently enabled
      This must be set before checking the route. */
@@ -1305,12 +1412,12 @@ tcp_output_segment(struct tcp_seg *seg, struct tcp_pcb *pcb, struct netif *netif
 #endif /* TCP_CHECKSUM_ON_COPY_SANITY_CHECK */
     if ((seg->flags & TF_SEG_DATA_CHECKSUMMED) == 0) {
       LWIP_ASSERT("data included but not checksummed",
-        seg->p->tot_len == (TCPH_HDRLEN(seg->tcphdr) * 4));
+        seg->p->tot_len == TCPH_HDRLEN_BYTES(seg->tcphdr));
     }
 
     /* rebuild TCP header checksum (TCP header changes for retransmissions!) */
     acc = ip_chksum_pseudo_partial(seg->p, IP_PROTO_TCP,
-      seg->p->tot_len, TCPH_HDRLEN(seg->tcphdr) * 4, &pcb->local_ip, &pcb->remote_ip);
+      seg->p->tot_len, TCPH_HDRLEN_BYTES(seg->tcphdr), &pcb->local_ip, &pcb->remote_ip);
     /* add payload checksum */
     if (seg->chksum_swapped) {
       seg->chksum = SWAP_BYTES_IN_WORD(seg->chksum);
