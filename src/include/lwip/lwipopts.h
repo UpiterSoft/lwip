@@ -176,9 +176,6 @@ extern signed long memused;
 #define LWIP_NETCONN         (!NO_SYS)
 #define LWIP_SOCKET          0
 
-//#ifdef NC30
-//#define LWIP_PROVIDE_ERRNO
-//#endif
 #ifdef CFG_MODULE_NETWORK
 #define LWIP_TCP 1
 #else
@@ -278,5 +275,10 @@ extern signed long memused;
  * and the contents must be ready after fs_open().
  */
 #define LWIP_HTTPD_DYNAMIC_FILE_READ  1
+
+#include <platform.h>
+#define SYS_ARCH_DECL_PROTECT(x) CRITICAL_STORE
+#define SYS_ARCH_PROTECT(x)      CRITICAL_START()
+#define SYS_ARCH_UNPROTECT(x)    CRITICAL_END()
 
 #endif //SIMULATION
