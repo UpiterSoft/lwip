@@ -900,10 +900,10 @@ get_http_headers(struct http_state *hs, const char *uri)
   }
 
   if (hs->handle && hs->handle->is_custom_file){
-	const char * customExt = getCustomExtension(hs->handle->pextension);
-	if (customExt != NULL){
+    const char * customExt = getCustomExtension(hs->handle->pextension);
+    if (customExt != NULL){
       ext = customExt;
-	}
+    }
   }
 
   if (ext != NULL) {
@@ -1710,7 +1710,6 @@ http_handle_post_finished(struct http_state *hs)
   return http_find_file(hs, http_uri_buf, 0);
 }
 
-
 /** Pass received POST body data to the application and correctly handle
  * returning a response document or closing the connection.
  * ATTENTION: The application is responsible for the pbuf now, so don't free it!
@@ -2069,25 +2068,25 @@ http_parse_request(struct pbuf *inp, struct http_state *hs, struct altcp_pcb *pc
           LWIP_DEBUGF(HTTPD_DEBUG, ("Received \"%s\" request for URI: \"%s\"\n",
                       data, uri));
 
- 		  char * header = sp2+1;
+          char * header = sp2+1;
 
- 		  int32_t sessid = 0;
- 		  const char* sess_id_str = "session_id=";
+          int32_t sessid = 0;
+          const char* sess_id_str = "session_id=";
 
- 		  do{
- 				char * cookie = strstr(header, "Cookie:");
- 				if (!cookie)
- 					break;
- 				char * session = strstr(header, sess_id_str);
- 				if (!session)
- 					break;
- 				session += strlen(sess_id_str);
- 				sessid = atoi(session);
- 		  } while(0);
+          do{
+            char * cookie = strstr(header, "Cookie:");
+            if (!cookie) {
+              break;
+            }
+            char * session = strstr(header, sess_id_str);
+            if (!session) {
+              break;
+            }
+            session += strlen(sess_id_str);
+            sessid = atoi(session);
+          } while(0);
 
- 		  hs->session_id = sessid;
-
-
+          hs->session_id = sessid;
 
 #if LWIP_HTTPD_SUPPORT_POST
           if (is_post) {
