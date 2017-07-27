@@ -142,6 +142,10 @@ extern signed long memused;
 
 #define LWIP_HOOK_FILENAME <lwip/lwip_hooks.h>
 
+
+#define FS_FILE_EXTENSION_T_DEFINED
+typedef struct fs_pextension fs_file_extension;
+
 #ifdef SIMULATION
 #include "lwipopts_sim.h"
 #else

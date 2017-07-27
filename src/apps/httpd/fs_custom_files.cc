@@ -54,8 +54,8 @@ static tPostRequest * getPostRequest(const char *name) {
 }
 
 static void initFileStruct(struct fs_file *const file, const int len, eCustomFileType fileType, FIL* const fileObject, const uint32_t eTag, PostResponse* const response) {
-	fs_pextension_t* const extra =
-			new fs_pextension_t(
+	fs_file_extension* const extra =
+			new fs_file_extension(
 					fileObject,
 					response,
 					eTag,
@@ -190,7 +190,7 @@ extern "C"
 void fs_close_custom(struct fs_file *file)
 {
 	PRINT_LOG(CFG_DEBUG_LOG_NET, LOG_LEVEL_LOW_PRIORITY, "close %p\r\n", file);
-	fs_pextension_t* const extra = (fs_pextension_t*)file->pextension;
+	fs_file_extension* const extra = file->pextension;
 
 	if (extra == nullptr) {
 		return;
@@ -220,7 +220,7 @@ int fs_read_async_custom(struct fs_file *file, char *buffer, int count, fs_wait_
 #else
 int fs_read_custom(struct fs_file *file, char *buffer, int count) {
 #endif
-	fs_pextension_t* const extra = (fs_pextension_t*)file->pextension;
+	fs_file_extension* const extra = file->pextension;
 
 	switch (extra->type) {
 	case CUSTOM_FILE_SD:
@@ -278,7 +278,7 @@ fs_canread_custom(struct fs_file *file)
   /* If reading would block, return 0 and implement fs_wait_read_custom() to call the
      supplied callback if reading works. */
 	const PostResponse * const jsonResponse =
-			((fs_pextension*) (file->pextension))->jsonResponse;
+			file->pextension->jsonResponse;
 	if (jsonResponse != nullptr) {
 		return jsonResponse->isResponseReady() ? 1 : 0;
 	}
@@ -302,21 +302,19 @@ fs_wait_read_custom(struct fs_file *file, fs_wait_cb callback_fn, void *callback
 
 
 extern "C"
-char * getETagHeader(void * const pextension) {
+char * getETagHeader(fs_file_extension * const pextension) {
 	if (pextension != nullptr) {
-	    fs_pextension_t * const extra = (fs_pextension_t *)pextension;
-	    if ((extra->type == CUSTOM_FILE_SD) && (extra->ETag != 0)) {
-	      return extra->ETagHeaderBuffer;
+	    if ((pextension->type == CUSTOM_FILE_SD) && (pextension->ETag != 0)) {
+	      return pextension->ETagHeaderBuffer;
 	    }
 	}
 	return nullptr;
 }
 
 extern "C"
-const char * getCustomExtension(void * const pextension) {
+const char * getCustomExtension(const fs_file_extension * const pextension) {
 	if (pextension != nullptr) {
-	    fs_pextension_t * const extra = (fs_pextension_t *)pextension;
-	    if (extra->type == CUSTOM_FILE_SMALL_PAGES) {
+	    if (pextension->type == CUSTOM_FILE_SMALL_PAGES) {
 	        return "html";
 	    }
 	}
@@ -324,10 +322,10 @@ const char * getCustomExtension(void * const pextension) {
 }
 
 extern "C"
-void setCookieSessionID(void * const pextension, const uint32_t session_id) {
-   	fs_pextension * extra = (fs_pextension*)(pextension);
-   	if (((extra->type == CUSTOM_FILE_JSON) || (extra->type == CUSTOM_FILE_SMALL_PAGES)) &&
-   	    (extra->jsonResponse != nullptr)) {
-       extra->jsonResponse->setCookieSessionID(session_id);
+void setCookieSessionID(fs_file_extension * const pextension, const uint32_t session_id) {
+   	if (    (pextension->jsonResponse != nullptr)
+   		&& ((pextension->type == CUSTOM_FILE_JSON)
+   		||  (pextension->type == CUSTOM_FILE_SMALL_PAGES))) {
+   		pextension->jsonResponse->setCookieSessionID(session_id);
    	}
 }
