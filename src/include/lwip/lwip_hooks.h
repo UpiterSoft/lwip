@@ -13,7 +13,6 @@
 
 u16_t httpGetMaxWriteLen(struct altcp_pcb *pcb);
 char * getETagHeader(fs_file_extension * const pextension);
-const char * getCustomExtension(const fs_file_extension * const pextension);
 void setCookieSessionID(fs_file_extension * const pextension, const uint32_t session_id);
 
 
