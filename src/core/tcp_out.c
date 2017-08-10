@@ -160,7 +160,7 @@ tcp_send_fin(struct tcp_pcb *pcb)
     if ((TCPH_FLAGS(last_unsent->tcphdr) & (TCP_SYN | TCP_FIN | TCP_RST)) == 0) {
       /* no SYN/FIN/RST flag in the header, we can add the FIN flag */
       TCPH_SET_FLAG(last_unsent->tcphdr, TCP_FIN);
-      pcb->flags |= TF_FIN;
+      tcp_set_flags(pcb, TF_FIN);
       return ERR_OK;
     }
   }
@@ -210,7 +210,7 @@ tcp_create_segment(struct tcp_pcb *pcb, struct pbuf *p, u8_t flags, u32_t seqno,
 #endif /* TCP_CHECKSUM_ON_COPY */
 
   /* build TCP header */
-  if (pbuf_header(p, TCP_HLEN)) {
+  if (pbuf_add_header(p, TCP_HLEN)) {
     LWIP_DEBUGF(TCP_OUTPUT_DEBUG | LWIP_DBG_LEVEL_SERIOUS, ("tcp_create_segment: no room for TCP header in pbuf.\n"));
     TCP_STATS_INC(tcp.err);
     tcp_seg_free(seg);
@@ -334,7 +334,7 @@ tcp_write_checks(struct tcp_pcb *pcb, u16_t len)
   if (len > pcb->snd_buf) {
     LWIP_DEBUGF(TCP_OUTPUT_DEBUG | LWIP_DBG_LEVEL_SEVERE, ("tcp_write: too much data (len=%"U16_F" > snd_buf=%"TCPWNDSIZE_F")\n",
       len, pcb->snd_buf));
-    pcb->flags |= TF_NAGLEMEMERR;
+    tcp_set_flags(pcb, TF_NAGLEMEMERR);
     return ERR_MEM;
   }
 
@@ -347,7 +347,7 @@ tcp_write_checks(struct tcp_pcb *pcb, u16_t len)
     LWIP_DEBUGF(TCP_OUTPUT_DEBUG | LWIP_DBG_LEVEL_SEVERE, ("tcp_write: too long queue %"U16_F" (max %"U16_F")\n",
       pcb->snd_queuelen, (u16_t)TCP_SND_QUEUELEN));
     TCP_STATS_INC(tcp.memerr);
-    pcb->flags |= TF_NAGLEMEMERR;
+    tcp_set_flags(pcb, TF_NAGLEMEMERR);
     return ERR_MEM;
   }
   if (pcb->snd_queuelen != 0) {
@@ -776,7 +776,7 @@ tcp_write(struct tcp_pcb *pcb, const void *arg, u16_t len, u8_t apiflags)
 
   return ERR_OK;
 memerr:
-  pcb->flags |= TF_NAGLEMEMERR;
+  tcp_set_flags(pcb, TF_NAGLEMEMERR);
   TCP_STATS_INC(tcp.memerr);
 
   if (concat_p != NULL) {
@@ -820,7 +820,7 @@ tcp_enqueue_flags(struct tcp_pcb *pcb, u8_t flags)
     LWIP_DEBUGF(TCP_OUTPUT_DEBUG | LWIP_DBG_LEVEL_SEVERE, ("tcp_enqueue_flags: too long queue %"U16_F" (max %"U16_F")\n",
                                        pcb->snd_queuelen, (u16_t)TCP_SND_QUEUELEN));
     TCP_STATS_INC(tcp.memerr);
-    pcb->flags |= TF_NAGLEMEMERR;
+    tcp_set_flags(pcb, TF_NAGLEMEMERR);
     return ERR_MEM;
   }
 
@@ -852,7 +852,7 @@ tcp_enqueue_flags(struct tcp_pcb *pcb, u8_t flags)
 
   /* Allocate pbuf with room for TCP header + options */
   if ((p = pbuf_alloc(PBUF_TRANSPORT, optlen, PBUF_RAM)) == NULL) {
-    pcb->flags |= TF_NAGLEMEMERR;
+    tcp_set_flags(pcb, TF_NAGLEMEMERR);
     TCP_STATS_INC(tcp.memerr);
     return ERR_MEM;
   }
@@ -861,7 +861,7 @@ tcp_enqueue_flags(struct tcp_pcb *pcb, u8_t flags)
 
   /* Allocate memory for tcp_seg, and fill in fields. */
   if ((seg = tcp_create_segment(pcb, p, flags, pcb->snd_lbb, optflags)) == NULL) {
-    pcb->flags |= TF_NAGLEMEMERR;
+    tcp_set_flags(pcb, TF_NAGLEMEMERR);
     TCP_STATS_INC(tcp.memerr);
     return ERR_MEM;
   }
@@ -893,7 +893,7 @@ tcp_enqueue_flags(struct tcp_pcb *pcb, u8_t flags)
     /* optlen does not influence snd_buf */
   }
   if (flags & TCP_FIN) {
-    pcb->flags |= TF_FIN;
+    tcp_set_flags(pcb, TF_FIN);
   }
 
   /* update number of segments on the queues */
@@ -1030,7 +1030,7 @@ tcp_send_empty_ack(struct tcp_pcb *pcb)
   p = tcp_output_alloc_header(pcb, optlen, 0, lwip_htonl(pcb->snd_nxt));
   if (p == NULL) {
     /* let tcp_fasttmr retry sending this ACK */
-    pcb->flags |= (TF_ACK_DELAY | TF_ACK_NOW);
+    tcp_set_flags(pcb, TF_ACK_DELAY | TF_ACK_NOW);
     LWIP_DEBUGF(TCP_OUTPUT_DEBUG, ("tcp_output: (ACK) could not allocate pbuf\n"));
     return ERR_BUF;
   }
@@ -1083,7 +1083,7 @@ tcp_send_empty_ack(struct tcp_pcb *pcb)
 
   if (err != ERR_OK) {
     /* let tcp_fasttmr retry sending this ACK */
-    pcb->flags |= (TF_ACK_DELAY | TF_ACK_NOW);
+    tcp_set_flags(pcb, TF_ACK_DELAY | TF_ACK_NOW);
   } else {
     /* remove ACK flags from the PCB, as we sent an empty ACK now */
     tcp_clear_flags(pcb, TF_ACK_DELAY | TF_ACK_NOW);
@@ -1230,7 +1230,7 @@ tcp_output(struct tcp_pcb *pcb)
     err = tcp_output_segment(seg, pcb, netif);
     if (err != ERR_OK) {
       /* segment could not be sent, for whatever reason */
-      pcb->flags |= TF_NAGLEMEMERR;
+      tcp_set_flags(pcb, TF_NAGLEMEMERR);
       return err;
     }
     pcb->unsent = seg->next;
@@ -1286,6 +1286,29 @@ output_done:
   return ERR_OK;
 }
 
+/** Check if a segment's pbufs are used by someone else than TCP.
+ * This can happen on retransmission if the pbuf of this segment is still
+ * referenced by the netif driver due to deferred transmission.
+ * This is the case (only!) if someone down the TX call path called
+ * pbuf_ref() on one of the pbufs!
+ *
+ * @arg seg the tcp segment to check
+ * @return 1 if ref != 1, 0 if ref == 1
+ */
+static int
+tcp_output_segment_busy(struct tcp_seg *seg)
+{
+  /* We only need to check the first pbuf here:
+     If a pbuf is queued for transmission, a driver calls pbuf_ref(),
+     which only changes the ref count of the first pbuf */
+  if (seg->p->ref != 1) {
+    /* other reference found */
+    return 1;
+  }
+  /* no other references found */
+  return 0;
+}
+
 /**
  * Called by tcp_output() to actually send a TCP segment over IP.
  *
@@ -1300,10 +1323,10 @@ tcp_output_segment(struct tcp_seg *seg, struct tcp_pcb *pcb, struct netif *netif
   u16_t len;
   u32_t *opts;
 
-  if (seg->p->ref != 1) {
-    /* This can happen if the pbuf of this segment is still referenced by the
-       netif driver due to deferred transmission. Since this function modifies
-       p->len, we must not continue in this case. */
+  if (tcp_output_segment_busy(seg)) {
+    /* This should not happen: rexmit functions should have checked this.
+       However, since this function modifies p->len, we must not continue in this case. */
+    LWIP_DEBUGF(TCP_RTO_DEBUG|LWIP_DBG_LEVEL_SERIOUS, ("tcp_output_segment: segment busy\n"));
     return ERR_OK;
   }
 
@@ -1514,17 +1537,29 @@ tcp_rst(const struct tcp_pcb *pcb, u32_t seqno, u32_t ackno,
  *
  * @param pcb the tcp_pcb for which to re-enqueue all unacked segments
  */
-void
-tcp_rexmit_rto(struct tcp_pcb *pcb)
+err_t
+tcp_rexmit_rto_prepare(struct tcp_pcb *pcb)
 {
   struct tcp_seg *seg;
 
   if (pcb->unacked == NULL) {
-    return;
+    return ERR_VAL;
   }
 
-  /* Move all unacked segments to the head of the unsent queue */
-  for (seg = pcb->unacked; seg->next != NULL; seg = seg->next);
+  /* Move all unacked segments to the head of the unsent queue.
+     However, give up if any of the unsent pbufs are still referenced by the
+     netif driver due to deferred transmission. No point loading the link further
+     if it is struggling to flush its buffered writes. */
+  for (seg = pcb->unacked; seg->next != NULL; seg = seg->next) {
+    if (tcp_output_segment_busy(seg)) {
+      LWIP_DEBUGF(TCP_RTO_DEBUG, ("tcp_rexmit_rto: segment busy\n"));
+      return ERR_VAL;
+    }
+  }
+  if (tcp_output_segment_busy(seg)) {
+    LWIP_DEBUGF(TCP_RTO_DEBUG, ("tcp_rexmit_rto: segment busy\n"));
+    return ERR_VAL;
+  }
   /* concatenate unsent queue after unacked queue */
   seg->next = pcb->unsent;
 #if TCP_OVERSIZE_DBGCHECK
@@ -1539,20 +1574,46 @@ tcp_rexmit_rto(struct tcp_pcb *pcb)
   pcb->unacked = NULL;
 
   /* Mark RTO in-progress */
-  pcb->flags |= TF_RTO;
+  tcp_set_flags(pcb, TF_RTO);
   /* Record the next byte following retransmit */
   pcb->rto_end = lwip_ntohl(seg->tcphdr->seqno) + TCP_TCPLEN(seg);
+  /* Don't take any RTT measurements after retransmitting. */
+  pcb->rttest = 0;
 
+  return ERR_OK;
+}
+
+/**
+ * Requeue all unacked segments for retransmission
+ *
+ * Called by tcp_slowtmr() for slow retransmission.
+ *
+ * @param pcb the tcp_pcb for which to re-enqueue all unacked segments
+ */
+void
+tcp_rexmit_rto_commit(struct tcp_pcb *pcb)
+{
   /* increment number of retransmissions */
   if (pcb->nrtx < 0xFF) {
     ++pcb->nrtx;
   }
-
-  /* Don't take any RTT measurements after retransmitting. */
-  pcb->rttest = 0;
-
   /* Do the actual retransmission */
   tcp_output(pcb);
+}
+
+/**
+ * Requeue all unacked segments for retransmission
+ *
+ * Called by tcp_slowtmr() for slow retransmission.
+ *
+ * @param pcb the tcp_pcb for which to re-enqueue all unacked segments
+ */
+void
+tcp_rexmit_rto(struct tcp_pcb *pcb)
+{
+  if (tcp_rexmit_rto_prepare(pcb) == ERR_OK) {
+    tcp_rexmit_rto_commit(pcb);
+  }
 }
 
 /**
@@ -1562,19 +1623,27 @@ tcp_rexmit_rto(struct tcp_pcb *pcb)
  *
  * @param pcb the tcp_pcb for which to retransmit the first unacked segment
  */
-void
+err_t
 tcp_rexmit(struct tcp_pcb *pcb)
 {
   struct tcp_seg *seg;
   struct tcp_seg **cur_seg;
 
   if (pcb->unacked == NULL) {
-    return;
+    return ERR_VAL;
+  }
+
+  seg = pcb->unacked;
+
+  /* Give up if the segment is still referenced by the netif driver
+     due to deferred transmission. */
+  if (tcp_output_segment_busy(seg)) {
+    LWIP_DEBUGF(TCP_RTO_DEBUG, ("tcp_rexmit busy\n"));
+    return ERR_VAL;
   }
 
   /* Move the first unacked segment to the unsent queue */
   /* Keep the unsent queue sorted. */
-  seg = pcb->unacked;
   pcb->unacked = seg->next;
 
   cur_seg = &(pcb->unsent);
@@ -1602,6 +1671,7 @@ tcp_rexmit(struct tcp_pcb *pcb)
   MIB2_STATS_INC(mib2.tcpretranssegs);
   /* No need to call tcp_output: we are always called from tcp_input()
      and thus tcp_output directly returns. */
+  return ERR_OK;
 }
 
 
@@ -1620,26 +1690,26 @@ tcp_rexmit_fast(struct tcp_pcb *pcb)
                  "), fast retransmit %"U32_F"\n",
                  (u16_t)pcb->dupacks, pcb->lastack,
                  lwip_ntohl(pcb->unacked->tcphdr->seqno)));
-    tcp_rexmit(pcb);
+    if (tcp_rexmit(pcb) == ERR_OK) {
+      /* Set ssthresh to half of the minimum of the current
+       * cwnd and the advertised window */
+      pcb->ssthresh = LWIP_MIN(pcb->cwnd, pcb->snd_wnd) / 2;
 
-    /* Set ssthresh to half of the minimum of the current
-     * cwnd and the advertised window */
-    pcb->ssthresh = LWIP_MIN(pcb->cwnd, pcb->snd_wnd) / 2;
+      /* The minimum value for ssthresh should be 2 MSS */
+      if (pcb->ssthresh < (2U * pcb->mss)) {
+        LWIP_DEBUGF(TCP_FR_DEBUG,
+                    ("tcp_receive: The minimum value for ssthresh %"TCPWNDSIZE_F
+                     " should be min 2 mss %"U16_F"...\n",
+                     pcb->ssthresh, (u16_t)(2*pcb->mss)));
+        pcb->ssthresh = 2 * pcb->mss;
+      }
 
-    /* The minimum value for ssthresh should be 2 MSS */
-    if (pcb->ssthresh < (2U * pcb->mss)) {
-      LWIP_DEBUGF(TCP_FR_DEBUG,
-                  ("tcp_receive: The minimum value for ssthresh %"TCPWNDSIZE_F
-                   " should be min 2 mss %"U16_F"...\n",
-                   pcb->ssthresh, (u16_t)(2*pcb->mss)));
-      pcb->ssthresh = 2*pcb->mss;
+      pcb->cwnd = pcb->ssthresh + 3 * pcb->mss;
+      tcp_set_flags(pcb, TF_INFR);
+
+      /* Reset the retransmission timer to prevent immediate rto retransmissions */
+      pcb->rtime = 0;
     }
-
-    pcb->cwnd = pcb->ssthresh + 3 * pcb->mss;
-    pcb->flags |= TF_INFR;
-
-    /* Reset the retransmission timer to prevent immediate rto retransmissions */
-    pcb->rtime = 0;
   }
 }
 

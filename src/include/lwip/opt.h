@@ -2580,7 +2580,8 @@
  * or any other desired algorithm as a replacement.
  * Called from tcp_connect() and tcp_listen_input() when an ISN is needed for
  * a new TCP connection, if TCP support (@ref LWIP_TCP) is enabled.\n
- * Signature: u32_t my_hook_tcp_isn(const ip_addr_t* local_ip, u16_t local_port, const ip_addr_t* remote_ip, u16_t remote_port);
+ * Signature:
+ * u32_t my_hook_tcp_isn(const ip_addr_t* local_ip, u16_t local_port, const ip_addr_t* remote_ip, u16_t remote_port);
  * - it may be necessary to use "struct ip_addr" (ip4_addr, ip6_addr) instead of "ip_addr_t" in function declarations\n
  * Arguments:
  * - local_ip: pointer to the local IP address of the connection
@@ -2596,7 +2597,10 @@
 
 /**
  * LWIP_HOOK_IP4_INPUT(pbuf, input_netif):
- * - called from ip_input() (IPv4)
+ * Called from ip_input() (IPv4)
+ * Signature:
+ *   int my_hook(struct pbuf *pbuf, struct netif *input_netif);
+ * Arguments:
  * - pbuf: received struct pbuf passed to ip_input()
  * - input_netif: struct netif on which the packet has been received
  * Return values:
@@ -2611,30 +2615,47 @@
 
 /**
  * LWIP_HOOK_IP4_ROUTE(dest):
- * - called from ip_route() (IPv4)
+ * Called from ip_route() (IPv4)
+ * Signature:
+ *   struct netif *my_hook(const ip4_addr_t *dest);
+ * Arguments:
  * - dest: destination IPv4 address
- * Returns the destination netif or NULL if no destination netif is found. In
- * that case, ip_route() continues as normal.
+ * Returns values:
+ * - the destination netif
+ * - NULL if no destination netif is found. In that case, ip_route() continues as normal.
  */
 #ifdef __DOXYGEN__
 #define LWIP_HOOK_IP4_ROUTE()
 #endif
 
 /**
- * LWIP_HOOK_IP4_ROUTE_SRC(dest, src):
- * - source-based routing for IPv4 (see LWIP_HOOK_IP4_ROUTE(), src may be NULL)
+ * LWIP_HOOK_IP4_ROUTE_SRC(src, dest):
+ * Source-based routing for IPv4 - called from ip_route() (IPv4)
+ * Signature:
+ *   struct netif *my_hook(const ip4_addr_t *src, const ip4_addr_t *dest);
+ * Arguments:
+ * - src: local/source IPv4 address
+ * - dest: destination IPv4 address
+ * Returns values:
+ * - the destination netif
+ * - NULL if no destination netif is found. In that case, ip_route() continues as normal.
  */
 #ifdef __DOXYGEN__
-#define LWIP_HOOK_IP4_ROUTE_SRC(dest, src)
+#define LWIP_HOOK_IP4_ROUTE_SRC(src, dest)
 #endif
 
 /**
  * LWIP_HOOK_ETHARP_GET_GW(netif, dest):
- * - called from etharp_output() (IPv4)
+ * Called from etharp_output() (IPv4)
+ * Signature:
+ *   const ip4_addr_t *my_hook(struct netif *netif, const ip4_addr_t *dest);
+ * Arguments:
  * - netif: the netif used for sending
  * - dest: the destination IPv4 address
- * Returns the IPv4 address of the gateway to handle the specified destination
- * IPv4 address. If NULL is returned, the netif's default gateway is used.
+ * Return values:
+ * - the IPv4 address of the gateway to handle the specified destination IPv4 address
+ * - NULL, in which case the netif's default gateway is used
+ *
  * The returned address MUST be directly reachable on the specified netif!
  * This function is meant to implement advanced IPv4 routing together with
  * LWIP_HOOK_IP4_ROUTE(). The actual routing/gateway table implementation is
@@ -2646,7 +2667,10 @@
 
 /**
  * LWIP_HOOK_IP6_INPUT(pbuf, input_netif):
- * - called from ip6_input() (IPv6)
+ * Called from ip6_input() (IPv6)
+ * Signature:
+ *   int my_hook(struct pbuf *pbuf, struct netif *input_netif);
+ * Arguments:
  * - pbuf: received struct pbuf passed to ip6_input()
  * - input_netif: struct netif on which the packet has been received
  * Return values:
@@ -2661,11 +2685,15 @@
 
 /**
  * LWIP_HOOK_IP6_ROUTE(src, dest):
- * - called from ip6_route() (IPv6)
- * - src: sourc IPv6 address
+ * Called from ip_route() (IPv6)
+ * Signature:
+ *   struct netif *my_hook(const ip6_addr_t *dest, const ip6_addr_t *src);
+ * Arguments:
+ * - src: source IPv6 address
  * - dest: destination IPv6 address
- * Returns the destination netif or NULL if no destination netif is found. In
- * that case, ip6_route() continues as normal.
+ * Return values:
+ * - the destination netif
+ * - NULL if no destination netif is found. In that case, ip6_route() continues as normal.
  */
 #ifdef __DOXYGEN__
 #define LWIP_HOOK_IP6_ROUTE(src, dest)
@@ -2673,11 +2701,16 @@
 
 /**
  * LWIP_HOOK_ND6_GET_GW(netif, dest):
- * - called from nd6_get_next_hop_entry() (IPv6)
+ * Called from nd6_get_next_hop_entry() (IPv6)
+ * Signature:
+ *   const ip6_addr_t *my_hook(struct netif *netif, const ip6_addr_t *dest);
+ * Arguments:
  * - netif: the netif used for sending
  * - dest: the destination IPv6 address
- * Returns the IPv6 address of the next hop to handle the specified destination
- * IPv6 address. If NULL is returned, a NDP-discovered router is used instead.
+ * Return values:
+ * - the IPv6 address of the next hop to handle the specified destination IPv6 address
+ * - NULL, in which case a NDP-discovered router is used instead
+ *
  * The returned address MUST be directly reachable on the specified netif!
  * This function is meant to implement advanced IPv6 routing together with
  * LWIP_HOOK_IP6_ROUTE(). The actual routing/gateway table implementation is
@@ -2689,7 +2722,10 @@
 
 /**
  * LWIP_HOOK_VLAN_CHECK(netif, eth_hdr, vlan_hdr):
- * - called from ethernet_input() if VLAN support is enabled
+ * Called from ethernet_input() if VLAN support is enabled
+ * Signature:
+ *   int my_hook(struct netif *netif, struct eth_hdr *eth_hdr, struct eth_vlan_hdr *vlan_hdr);
+ * Arguments:
  * - netif: struct netif on which the packet has been received
  * - eth_hdr: struct eth_hdr of the packet
  * - vlan_hdr: struct eth_vlan_hdr of the packet
@@ -2706,7 +2742,8 @@
  * Hook can be used to set prio_vid field of vlan_hdr. If you need to store data
  * on per-netif basis to implement this callback, see @ref netif_cd.
  * Called from ethernet_output() if VLAN support (@ref ETHARP_SUPPORT_VLAN) is enabled.\n
- * Signature: s32_t my_hook_vlan_set(struct netif* netif, struct pbuf* pbuf, const struct eth_addr* src, const struct eth_addr* dst, u16_t eth_type);\n
+ * Signature:
+ *   s32_t my_hook_vlan_set(struct netif* netif, struct pbuf* pbuf, const struct eth_addr* src, const struct eth_addr* dst, u16_t eth_type);\n
  * Arguments:
  * - netif: struct netif that the packet will be sent through
  * - p: struct pbuf packet to be sent
@@ -2725,7 +2762,9 @@
 
 /**
  * LWIP_HOOK_MEMP_AVAILABLE(memp_t_type):
- * - called from memp_free() when a memp pool was empty and an item is now available
+ * Called from memp_free() when a memp pool was empty and an item is now available
+ * Signature:
+ *   void my_hook(memp_t type);
  */
 #ifdef __DOXYGEN__
 #define LWIP_HOOK_MEMP_AVAILABLE(memp_t_type)
@@ -2734,7 +2773,15 @@
 /**
  * LWIP_HOOK_UNKNOWN_ETH_PROTOCOL(pbuf, netif):
  * Called from ethernet_input() when an unknown eth type is encountered.
- * Return ERR_OK if packet is accepted, any error code otherwise.
+ * Signature:
+ *   err_t my_hook(struct pbuf* pbuf, struct netif* netif);
+ * Arguments:
+ * - p: rx packet with unknown eth type
+ * - netif: netif on which the packet has been received
+ * Return values:
+ * - ERR_OK if packet is accepted (hook function now owns the pbuf)
+ * - any error code otherwise (pbuf is freed)
+ *
  * Payload points to ethernet header!
  */
 #ifdef __DOXYGEN__
@@ -2742,33 +2789,40 @@
 #endif
 
 /**
- * LWIP_HOOK_DHCP_APPEND_OPTIONS(netif, dhcp, state, msg, msg_type):
+ * LWIP_HOOK_DHCP_APPEND_OPTIONS(netif, dhcp, state, msg, msg_type, options_len_ptr):
  * Called from various dhcp functions when sending a DHCP message.
  * This hook is called just before the DHCP message trailer is added, so the
  * options are at the end of a DHCP message.
+ * Signature:
+ *   void my_hook(struct netif *netif, struct dhcp *dhcp, u8_t state, struct dhcp_msg *msg,
+ *                u8_t msg_type, u16_t *options_len_ptr);
  * Arguments:
  * - netif: struct netif that the packet will be sent through
  * - dhcp: struct dhcp on that netif
  * - state: current dhcp state (dhcp_state_enum_t as an u8_t)
  * - msg: struct dhcp_msg that will be sent
  * - msg_type: dhcp message type to be sent (u8_t)
- * Returns void
+ * - options_len_ptr: pointer to the current length of options in the dhcp_msg "msg"
+ *                    (must be increased when options are added!)
  *
  * Options need to appended like this:
- *   LWIP_ASSERT("dhcp option overflow", dhcp->options_out_len + option_len + 2 <= DHCP_OPTIONS_LEN);
- *   dhcp->msg_out->options[dhcp->options_out_len++] = &lt;option_number&gt;;
- *   dhcp->msg_out->options[dhcp->options_out_len++] = &lt;option_len&gt;;
- *   dhcp->msg_out->options[dhcp->options_out_len++] = &lt;option_bytes&gt;;
+ *   LWIP_ASSERT("dhcp option overflow", *options_len_ptr + option_len + 2 <= DHCP_OPTIONS_LEN);
+ *   msg->options[(*options_len_ptr)++] = &lt;option_number&gt;;
+ *   msg->options[(*options_len_ptr)++] = &lt;option_len&gt;;
+ *   msg->options[(*options_len_ptr)++] = &lt;option_bytes&gt;;
  *   [...]
  */
 #ifdef __DOXYGEN__
-#define LWIP_HOOK_DHCP_APPEND_OPTIONS(netif, dhcp, state, msg, msg_type)
+#define LWIP_HOOK_DHCP_APPEND_OPTIONS(netif, dhcp, state, msg, msg_type, options_len_ptr)
 #endif
 
 /**
- * LWIP_HOOK_DHCP_PARSE_OPTION(netif, dhcp, state, msg, msg_type, option, len, pbuf, offset):
+ * LWIP_HOOK_DHCP_PARSE_OPTION(netif, dhcp, state, msg, msg_type, option, len, pbuf, option_value_offset):
  * Called from dhcp_parse_reply when receiving a DHCP message.
  * This hook is called for every option in the received message that is not handled internally.
+ * Signature:
+ *   void my_hook(struct netif *netif, struct dhcp *dhcp, u8_t state, struct dhcp_msg *msg,
+ *                u8_t msg_type, u8_t option, u8_t option_len, struct pbuf *pbuf, u16_t option_value_offset);
  * Arguments:
  * - netif: struct netif that the packet will be sent through
  * - dhcp: struct dhcp on that netif
@@ -2779,8 +2833,7 @@
  * - option: option value (u8_t)
  * - len: option data length (u8_t)
  * - pbuf: pbuf where option data is contained
- * - offset: offset in pbuf where option *data* begins
- * Returns void
+ * - option_value_offset: offset in pbuf where option *data* begins
  *
  * A nice way to get the option contents is pbuf_get_contiguous():
  *  u8_t buf[32];

@@ -1,16 +1,10 @@
 /**
  * @file
- * Application layered TCP connection API (to be used from TCPIP thread)\n
- * This interface mimics the tcp callback API to the application while preventing
- * direct linking (much like virtual functions).
- * This way, an application can make use of other application layer protocols
- * on top of TCP without knowing the details (e.g. TLS, proxy connection).
- *
- * This file contains the base implementation calling into tcp.
+ * IANA assigned numbers (RFC 1700 and successors)
  */
 
 /*
- * Copyright (c) 2017 Simon Goldschmidt
+ * Copyright (c) 2017 Dirk Ziegelmeier.
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without modification,
@@ -37,34 +31,30 @@
  *
  * This file is part of the lwIP TCP/IP stack.
  *
- * Author: Simon Goldschmidt <goldsimon@gmx.de>
+ * Author: Dirk Ziegelmeier <dziegel@gmx.de>
  *
  */
-#ifndef LWIP_HDR_ALTCP_TCP_H
-#define LWIP_HDR_ALTCP_TCP_H
 
-#include "lwip/opt.h"
+#ifndef LWIP_HDR_PROT_IANA_H
+#define LWIP_HDR_PROT_IANA_H
 
-#if LWIP_ALTCP /* don't build if not configured for use in lwipopts.h */
+/* Hardware types */
+#define LWIP_IANA_HWTYPE_ETHERNET                     1
 
-#include "lwip/altcp.h"
+/* Port numbers (https://www.iana.org/assignments/service-names-port-numbers/service-names-port-numbers.txt) */
+#define LWIP_IANA_PORT_SMTP                           25
+#define LWIP_IANA_PORT_DHCP_SERVER                    67
+#define LWIP_IANA_PORT_DHCP_CLIENT                    68
+#define LWIP_IANA_PORT_TFTP                           69
+#define LWIP_IANA_PORT_HTTP                           80
+#define LWIP_IANA_PORT_SNTP                           123
+#define LWIP_IANA_PORT_NETBIOS                        137
+#define LWIP_IANA_PORT_SNMP                           161
+#define LWIP_IANA_PORT_SNMP_TRAP                      162
+#define LWIP_IANA_PORT_HTTPS                          443
+#define LWIP_IANA_PORT_SMTPS                          465
+#define LWIP_IANA_PORT_MQTT                           1883
+#define LWIP_IANA_PORT_MDNS                           5353
+#define LWIP_IANA_PORT_SEQURE_MQTT                    8883
 
-#ifdef __cplusplus
-extern "C" {
-#endif
-
-struct altcp_pcb *altcp_tcp_new_ip_type(u8_t ip_type);
-
-#define altcp_tcp_new() altcp_tcp_new_ip_type(IPADDR_TYPE_V4)
-#define altcp_tcp_new_ip6() altcp_tcp_new_ip_type(IPADDR_TYPE_V6)
-
-struct tcp_pcb;
-struct altcp_pcb *altcp_tcp_wrap(struct tcp_pcb *tpcb);
-
-#ifdef __cplusplus
-}
-#endif
-
-#endif /* LWIP_ALTCP */
-
-#endif /* LWIP_HDR_ALTCP_TCP_H */
+#endif /* LWIP_HDR_PROT_IANA_H */

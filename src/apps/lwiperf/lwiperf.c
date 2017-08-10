@@ -471,8 +471,8 @@ lwiperf_tcp_recv(void *arg, struct tcp_pcb *tpcb, struct pbuf *p, err_t err)
       return ERR_OK;
     }
     conn->next_num = 4; /* 24 bytes received... */
-    tmp = pbuf_header(p, -24);
-    LWIP_ASSERT("pbuf_header failed", tmp == 0);
+    tmp = pbuf_remove_header(p, 24);
+    LWIP_ASSERT("pbuf_remove_header failed", tmp == 0);
   }
 
   packet_idx = 0;

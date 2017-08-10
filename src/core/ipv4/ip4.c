@@ -55,7 +55,7 @@
 #include "lwip/priv/tcp_priv.h"
 #include "lwip/autoip.h"
 #include "lwip/stats.h"
-#include "lwip/prot/dhcp.h"
+#include "lwip/prot/iana.h"
 
 #include <string.h>
 
@@ -89,14 +89,14 @@
  */
 #if LWIP_DHCP && defined(LWIP_IP_ACCEPT_UDP_PORT)
 /* accept DHCP client port and custom port */
-#define IP_ACCEPT_LINK_LAYER_ADDRESSED_PORT(port) (((port) == PP_NTOHS(DHCP_CLIENT_PORT)) \
+#define IP_ACCEPT_LINK_LAYER_ADDRESSED_PORT(port) (((port) == PP_NTOHS(LWIP_IANA_PORT_DHCP_CLIENT)) \
          || (LWIP_IP_ACCEPT_UDP_PORT(port)))
 #elif defined(LWIP_IP_ACCEPT_UDP_PORT) /* LWIP_DHCP && defined(LWIP_IP_ACCEPT_UDP_PORT) */
 /* accept custom port only */
 #define IP_ACCEPT_LINK_LAYER_ADDRESSED_PORT(port) (LWIP_IP_ACCEPT_UDP_PORT(port))
 #else /* LWIP_DHCP && defined(LWIP_IP_ACCEPT_UDP_PORT) */
 /* accept DHCP client port only */
-#define IP_ACCEPT_LINK_LAYER_ADDRESSED_PORT(port) ((port) == PP_NTOHS(DHCP_CLIENT_PORT))
+#define IP_ACCEPT_LINK_LAYER_ADDRESSED_PORT(port) ((port) == PP_NTOHS(LWIP_IANA_PORT_DHCP_CLIENT))
 #endif /* LWIP_DHCP && defined(LWIP_IP_ACCEPT_UDP_PORT) */
 
 #else /* LWIP_DHCP */
@@ -126,11 +126,11 @@ ip4_set_default_multicast_netif(struct netif* default_multicast_netif)
  * LWIP_HOOK_IP4_ROUTE_SRC(). This function only provides the parameters.
  */
 struct netif *
-ip4_route_src(const ip4_addr_t *dest, const ip4_addr_t *src)
+ip4_route_src(const ip4_addr_t *src, const ip4_addr_t *dest)
 {
   if (src != NULL) {
     /* when src==NULL, the hook is called from ip4_route(dest) */
-    struct netif *netif = LWIP_HOOK_IP4_ROUTE_SRC(dest, src);
+    struct netif *netif = LWIP_HOOK_IP4_ROUTE_SRC(src, dest);
     if (netif != NULL) {
       return netif;
     }
@@ -196,7 +196,7 @@ ip4_route(const ip4_addr_t *dest)
 #endif /* LWIP_NETIF_LOOPBACK && !LWIP_HAVE_LOOPIF */
 
 #ifdef LWIP_HOOK_IP4_ROUTE_SRC
-  netif = LWIP_HOOK_IP4_ROUTE_SRC(dest, NULL);
+  netif = LWIP_HOOK_IP4_ROUTE_SRC(NULL, dest);
   if (netif != NULL) {
     return netif;
   }
@@ -287,7 +287,7 @@ ip4_forward(struct pbuf *p, struct ip_hdr *iphdr, struct netif *inp)
   }
 
   /* Find network interface where to forward this IP packet to. */
-  netif = ip4_route_src(ip4_current_dest_addr(), ip4_current_src_addr());
+  netif = ip4_route_src(ip4_current_src_addr(), ip4_current_dest_addr());
   if (netif == NULL) {
     LWIP_DEBUGF(IP_DEBUG, ("ip4_forward: no forwarding route for %"U16_F".%"U16_F".%"U16_F".%"U16_F" found\n",
       ip4_addr1_16(ip4_current_dest_addr()), ip4_addr2_16(ip4_current_dest_addr()),
@@ -674,7 +674,7 @@ ip4_input(struct pbuf *p, struct netif *inp)
   if (raw_input(p, inp) == 0)
 #endif /* LWIP_RAW */
   {
-    pbuf_header(p, (s16_t)-(s16_t)iphdr_hlen); /* Move to payload, no check necessary. */
+    pbuf_remove_header(p, iphdr_hlen); /* Move to payload, no check necessary. */
 
     switch (IPH_PROTO(iphdr)) {
 #if LWIP_UDP
@@ -847,7 +847,7 @@ ip4_output_if_opt_src(struct pbuf *p, const ip4_addr_t *src, const ip4_addr_t *d
       optlen_aligned = (u16_t)((optlen + 3) & ~3);
       ip_hlen = (u16_t)(ip_hlen + optlen_aligned);
       /* First write in the IP options */
-      if (pbuf_header(p, (s16_t)optlen_aligned)) {
+      if (pbuf_add_header(p, optlen_aligned)) {
         LWIP_DEBUGF(IP_DEBUG | LWIP_DBG_LEVEL_SERIOUS, ("ip4_output_if_opt: not enough room for IP options in pbuf\n"));
         IP_STATS_INC(ip.err);
         MIB2_STATS_INC(mib2.ipoutdiscards);
@@ -866,7 +866,7 @@ ip4_output_if_opt_src(struct pbuf *p, const ip4_addr_t *src, const ip4_addr_t *d
     }
 #endif /* IP_OPTIONS_SEND */
     /* generate IP header */
-    if (pbuf_header(p, IP_HLEN)) {
+    if (pbuf_add_header(p, IP_HLEN)) {
       LWIP_DEBUGF(IP_DEBUG | LWIP_DBG_LEVEL_SERIOUS, ("ip4_output: not enough room for IP header in pbuf\n"));
 
       IP_STATS_INC(ip.err);
@@ -1006,7 +1006,7 @@ ip4_output(struct pbuf *p, const ip4_addr_t *src, const ip4_addr_t *dest,
 
   LWIP_IP_CHECK_PBUF_REF_COUNT_FOR_TX(p);
 
-  if ((netif = ip4_route_src(dest, src)) == NULL) {
+  if ((netif = ip4_route_src(src, dest)) == NULL) {
     LWIP_DEBUGF(IP_DEBUG, ("ip4_output: No route to %"U16_F".%"U16_F".%"U16_F".%"U16_F"\n",
       ip4_addr1_16(dest), ip4_addr2_16(dest), ip4_addr3_16(dest), ip4_addr4_16(dest)));
     IP_STATS_INC(ip.rterr);
@@ -1044,7 +1044,7 @@ ip4_output_hinted(struct pbuf *p, const ip4_addr_t *src, const ip4_addr_t *dest,
 
   LWIP_IP_CHECK_PBUF_REF_COUNT_FOR_TX(p);
 
-  if ((netif = ip4_route_src(dest, src)) == NULL) {
+  if ((netif = ip4_route_src(src, dest)) == NULL) {
     LWIP_DEBUGF(IP_DEBUG, ("ip4_output: No route to %"U16_F".%"U16_F".%"U16_F".%"U16_F"\n",
       ip4_addr1_16(dest), ip4_addr2_16(dest), ip4_addr3_16(dest), ip4_addr4_16(dest)));
     IP_STATS_INC(ip.rterr);

@@ -342,9 +342,9 @@ udp_input(struct pbuf *p, struct netif *inp)
       }
     }
 #endif /* CHECKSUM_CHECK_UDP */
-    if (pbuf_header(p, -UDP_HLEN)) {
+    if (pbuf_remove_header(p, UDP_HLEN)) {
       /* Can we cope with this failing? Just assert for now */
-      LWIP_ASSERT("pbuf_header failed\n", 0);
+      LWIP_ASSERT("pbuf_remove_header failed\n", 0);
       UDP_STATS_INC(udp.drop);
       MIB2_STATS_INC(mib2.udpinerrors);
       pbuf_free(p);
@@ -539,7 +539,7 @@ udp_sendto_chksum(struct udp_pcb *pcb, struct pbuf *p, const ip_addr_t *dst_ip,
            fails, we try regular routing as though no override was set. */
         if (!ip4_addr_isany_val(pcb->mcast_ip4) &&
             !ip4_addr_cmp(&pcb->mcast_ip4, IP4_ADDR_BROADCAST)) {
-          netif = ip4_route_src(&pcb->mcast_ip4, ip_2_ip4(&pcb->local_ip));
+          netif = ip4_route_src(ip_2_ip4(&pcb->local_ip), &pcb->mcast_ip4);
         }
       }
 #endif /* LWIP_IPV4 */
@@ -712,7 +712,7 @@ udp_sendto_if_src_chksum(struct udp_pcb *pcb, struct pbuf *p, const ip_addr_t *d
     return ERR_MEM;
   }
   /* not enough space to add an UDP header to first pbuf in given p chain? */
-  if (pbuf_header(p, UDP_HLEN)) {
+  if (pbuf_add_header(p, UDP_HLEN)) {
     /* allocate header in a separate new pbuf */
     q = pbuf_alloc(PBUF_IP, UDP_HLEN, PBUF_RAM);
     /* new header pbuf could not be allocated? */

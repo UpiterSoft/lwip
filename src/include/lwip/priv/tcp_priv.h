@@ -79,7 +79,9 @@ void             tcp_input   (struct pbuf *p, struct netif *inp);
 struct tcp_pcb * tcp_alloc   (u8_t prio);
 void             tcp_abandon (struct tcp_pcb *pcb, int reset);
 err_t            tcp_send_empty_ack(struct tcp_pcb *pcb);
-void             tcp_rexmit  (struct tcp_pcb *pcb);
+err_t            tcp_rexmit  (struct tcp_pcb *pcb);
+err_t            tcp_rexmit_rto_prepare(struct tcp_pcb *pcb);
+void             tcp_rexmit_rto_commit(struct tcp_pcb *pcb);
 void             tcp_rexmit_rto  (struct tcp_pcb *pcb);
 void             tcp_rexmit_fast (struct tcp_pcb *pcb);
 u32_t            tcp_update_rcv_ann_wnd(struct tcp_pcb *pcb);
@@ -443,18 +445,16 @@ struct tcp_seg *tcp_seg_copy(struct tcp_seg *seg);
 #define tcp_ack(pcb)                               \
   do {                                             \
     if((pcb)->flags & TF_ACK_DELAY) {              \
-      tcp_clear_flags((pcb), TF_ACK_DELAY);        \
-      (pcb)->flags |= TF_ACK_NOW;                  \
+      tcp_clear_flags(pcb, TF_ACK_DELAY);          \
+      tcp_ack_now(pcb);                            \
     }                                              \
     else {                                         \
-      (pcb)->flags |= TF_ACK_DELAY;                \
+      tcp_set_flags(pcb, TF_ACK_DELAY);            \
     }                                              \
   } while (0)
 
 #define tcp_ack_now(pcb)                           \
-  do {                                             \
-    (pcb)->flags |= TF_ACK_NOW;                    \
-  } while (0)
+  tcp_set_flags(pcb, TF_ACK_NOW)
 
 err_t tcp_send_fin(struct tcp_pcb *pcb);
 err_t tcp_enqueue_flags(struct tcp_pcb *pcb, u8_t flags);

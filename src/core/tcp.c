@@ -217,7 +217,7 @@ tcp_backlog_delayed(struct tcp_pcb* pcb)
     if (pcb->listener != NULL) {
       pcb->listener->accepts_pending++;
       LWIP_ASSERT("accepts_pending != 0", pcb->listener->accepts_pending != 0);
-      pcb->flags |= TF_BACKLOGPEND;
+      tcp_set_flags(pcb, TF_BACKLOGPEND);
     }
   }
 }
@@ -369,7 +369,7 @@ tcp_close_shutdown_fin(struct tcp_pcb *pcb)
     tcp_output(pcb);
   } else if (err == ERR_MEM) {
     /* Mark this pcb for closing. Closing is retried from tcp_tmr. */
-    pcb->flags |= TF_CLOSEPEND;
+    tcp_set_flags(pcb, TF_CLOSEPEND);
   }
   return err;
 }
@@ -397,7 +397,7 @@ tcp_close(struct tcp_pcb *pcb)
 
   if (pcb->state != LISTEN) {
     /* Set a flag not to receive any more data... */
-    pcb->flags |= TF_RXCLOSED;
+    tcp_set_flags(pcb, TF_RXCLOSED);
   }
   /* ... and close */
   return tcp_close_shutdown(pcb, 1);
@@ -424,7 +424,7 @@ tcp_shutdown(struct tcp_pcb *pcb, int shut_rx, int shut_tx)
   }
   if (shut_rx) {
     /* shut down the receive side: set a flag not to receive any more data... */
-    pcb->flags |= TF_RXCLOSED;
+    tcp_set_flags(pcb, TF_RXCLOSED);
     if (shut_tx) {
       /* shutting down the tx AND rx side is the same as closing for the raw API */
       return tcp_close_shutdown(pcb, 1);
@@ -873,14 +873,16 @@ tcp_new_port(void)
   struct tcp_pcb *pcb;
 
 again:
-  if (tcp_port++ == TCP_LOCAL_PORT_RANGE_END) {
+  tcp_port++;
+  if (tcp_port == TCP_LOCAL_PORT_RANGE_END) {
     tcp_port = TCP_LOCAL_PORT_RANGE_START;
   }
   /* Check all PCB lists. */
   for (i = 0; i < NUM_TCP_PCB_LISTS; i++) {
     for (pcb = *tcp_pcb_lists[i]; pcb != NULL; pcb = pcb->next) {
       if (pcb->local_port == tcp_port) {
-        if (++n > (TCP_LOCAL_PORT_RANGE_END - TCP_LOCAL_PORT_RANGE_START)) {
+        n++;
+        if (n > (TCP_LOCAL_PORT_RANGE_END - TCP_LOCAL_PORT_RANGE_START)) {
           return 0;
         }
         goto again;
@@ -1102,33 +1104,34 @@ tcp_slowtmr_start:
           LWIP_DEBUGF(TCP_RTO_DEBUG, ("tcp_slowtmr: rtime %"S16_F
                                       " pcb->rto %"S16_F"\n",
                                       pcb->rtime, pcb->rto));
+          if (tcp_rexmit_rto_prepare(pcb) == ERR_OK) {
+            /* Double retransmission time-out unless we are trying to
+             * connect to somebody (i.e., we are in SYN_SENT). */
+            if (pcb->state != SYN_SENT) {
+              u8_t backoff_idx = LWIP_MIN(pcb->nrtx, sizeof(tcp_backoff)-1);
+              int calc_rto = ((pcb->sa >> 3) + pcb->sv) << tcp_backoff[backoff_idx];
+              pcb->rto = (s16_t)LWIP_MIN(calc_rto, 0x7FFF);
+            }
 
-          /* Double retransmission time-out unless we are trying to
-           * connect to somebody (i.e., we are in SYN_SENT). */
-          if (pcb->state != SYN_SENT) {
-            u8_t backoff_idx = LWIP_MIN(pcb->nrtx, sizeof(tcp_backoff)-1);
-            int calc_rto = ((pcb->sa >> 3) + pcb->sv) << tcp_backoff[backoff_idx];
-            pcb->rto = (s16_t)LWIP_MIN(calc_rto, 0x7FFF);
+            /* Reset the retransmission timer. */
+            pcb->rtime = 0;
+
+            /* Reduce congestion window and ssthresh. */
+            eff_wnd = LWIP_MIN(pcb->cwnd, pcb->snd_wnd);
+            pcb->ssthresh = eff_wnd >> 1;
+            if (pcb->ssthresh < (tcpwnd_size_t)(pcb->mss << 1)) {
+              pcb->ssthresh = (tcpwnd_size_t)(pcb->mss << 1);
+            }
+            pcb->cwnd = pcb->mss;
+            LWIP_DEBUGF(TCP_CWND_DEBUG, ("tcp_slowtmr: cwnd %"TCPWNDSIZE_F
+                                         " ssthresh %"TCPWNDSIZE_F"\n",
+                                         pcb->cwnd, pcb->ssthresh));
+            pcb->bytes_acked = 0;
+
+            /* The following needs to be called AFTER cwnd is set to one
+               mss - STJ */
+            tcp_rexmit_rto_commit(pcb);
           }
-
-          /* Reset the retransmission timer. */
-          pcb->rtime = 0;
-
-          /* Reduce congestion window and ssthresh. */
-          eff_wnd = LWIP_MIN(pcb->cwnd, pcb->snd_wnd);
-          pcb->ssthresh = eff_wnd >> 1;
-          if (pcb->ssthresh < (tcpwnd_size_t)(pcb->mss << 1)) {
-            pcb->ssthresh = (tcpwnd_size_t)(pcb->mss << 1);
-          }
-          pcb->cwnd = pcb->mss;
-          LWIP_DEBUGF(TCP_CWND_DEBUG, ("tcp_slowtmr: cwnd %"TCPWNDSIZE_F
-                                       " ssthresh %"TCPWNDSIZE_F"\n",
-                                       pcb->cwnd, pcb->ssthresh));
-          pcb->bytes_acked = 0;
-
-          /* The following needs to be called AFTER cwnd is set to one
-             mss - STJ */
-          tcp_rexmit_rto(pcb);
         }
       }
     }
@@ -1918,7 +1921,7 @@ tcp_pcb_remove(struct tcp_pcb **pcblist, struct tcp_pcb *pcb)
   if ((pcb->state != TIME_WAIT) &&
       (pcb->state != LISTEN) &&
       (pcb->flags & TF_ACK_DELAY)) {
-    pcb->flags |= TF_ACK_NOW;
+    tcp_ack_now(pcb);
     tcp_output(pcb);
   }
 

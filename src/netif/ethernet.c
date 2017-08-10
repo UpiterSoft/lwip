@@ -83,7 +83,7 @@ ethernet_input(struct pbuf *p, struct netif *netif)
   struct eth_hdr* ethhdr;
   u16_t type;
 #if LWIP_ARP || ETHARP_SUPPORT_VLAN || LWIP_IPV6
-  s16_t ip_hdr_offset = SIZEOF_ETH_HDR;
+  u16_t next_hdr_offset = SIZEOF_ETH_HDR;
 #endif /* LWIP_ARP || ETHARP_SUPPORT_VLAN */
 
   if (p->len <= SIZEOF_ETH_HDR) {
@@ -133,7 +133,7 @@ ethernet_input(struct pbuf *p, struct netif *netif)
     }
 #endif /* defined(LWIP_HOOK_VLAN_CHECK) || defined(ETHARP_VLAN_CHECK) || defined(ETHARP_VLAN_CHECK_FN) */
     type = vlan->tpid;
-    ip_hdr_offset = SIZEOF_ETH_HDR + SIZEOF_VLAN_HDR;
+    next_hdr_offset = SIZEOF_ETH_HDR + SIZEOF_VLAN_HDR;
   }
 #endif /* ETHARP_SUPPORT_VLAN */
 
@@ -173,10 +173,10 @@ ethernet_input(struct pbuf *p, struct netif *netif)
         goto free_and_return;
       }
       /* skip Ethernet header */
-      if ((p->len < ip_hdr_offset) || pbuf_header(p, (s16_t)-ip_hdr_offset)) {
+      if ((p->len < next_hdr_offset) || pbuf_remove_header(p, next_hdr_offset)) {
         LWIP_DEBUGF(ETHARP_DEBUG | LWIP_DBG_TRACE | LWIP_DBG_LEVEL_WARNING,
-          ("ethernet_input: IPv4 packet dropped, too short (%"S16_F"/%"S16_F")\n",
-          p->tot_len, ip_hdr_offset));
+          ("ethernet_input: IPv4 packet dropped, too short (%"U16_F"/%"U16_F")\n",
+          p->tot_len, next_hdr_offset));
         LWIP_DEBUGF(ETHARP_DEBUG | LWIP_DBG_TRACE, ("Can't move over header in packet"));
         goto free_and_return;
       } else {
@@ -190,10 +190,10 @@ ethernet_input(struct pbuf *p, struct netif *netif)
         goto free_and_return;
       }
       /* skip Ethernet header */
-      if ((p->len < ip_hdr_offset) || pbuf_header(p, (s16_t)-ip_hdr_offset)) {
+      if ((p->len < next_hdr_offset) || pbuf_remove_header(p, next_hdr_offset)) {
         LWIP_DEBUGF(ETHARP_DEBUG | LWIP_DBG_TRACE | LWIP_DBG_LEVEL_WARNING,
-          ("ethernet_input: ARP response packet dropped, too short (%"S16_F"/%"S16_F")\n",
-          p->tot_len, ip_hdr_offset));
+          ("ethernet_input: ARP response packet dropped, too short (%"U16_F"/%"U16_F")\n",
+          p->tot_len, next_hdr_offset));
         LWIP_DEBUGF(ETHARP_DEBUG | LWIP_DBG_TRACE, ("Can't move over header in packet"));
         ETHARP_STATS_INC(etharp.lenerr);
         ETHARP_STATS_INC(etharp.drop);
@@ -217,10 +217,10 @@ ethernet_input(struct pbuf *p, struct netif *netif)
 #if LWIP_IPV6
     case PP_HTONS(ETHTYPE_IPV6): /* IPv6 */
       /* skip Ethernet header */
-      if ((p->len < ip_hdr_offset) || pbuf_header(p, (s16_t)-ip_hdr_offset)) {
+      if ((p->len < next_hdr_offset) || pbuf_remove_header(p, next_hdr_offset)) {
         LWIP_DEBUGF(ETHARP_DEBUG | LWIP_DBG_TRACE | LWIP_DBG_LEVEL_WARNING,
-          ("ethernet_input: IPv6 packet dropped, too short (%"S16_F"/%"S16_F")\n",
-          p->tot_len, ip_hdr_offset));
+          ("ethernet_input: IPv6 packet dropped, too short (%"U16_F"/%"U16_F")\n",
+          p->tot_len, next_hdr_offset));
         goto free_and_return;
       } else {
         /* pass to IPv6 layer */
@@ -279,7 +279,7 @@ ethernet_output(struct netif* netif, struct pbuf* p,
 
     LWIP_ASSERT("prio_vid must be <= 0xFFFF", vlan_prio_vid <= 0xFFFF);
 
-    if (pbuf_header(p, SIZEOF_ETH_HDR + SIZEOF_VLAN_HDR) != 0) {
+    if (pbuf_add_header(p, SIZEOF_ETH_HDR + SIZEOF_VLAN_HDR) != 0) {
       goto pbuf_header_failed;
     }
     vlanhdr = (struct eth_vlan_hdr*)(((u8_t*)p->payload) + SIZEOF_ETH_HDR);
@@ -290,7 +290,7 @@ ethernet_output(struct netif* netif, struct pbuf* p,
   } else
 #endif /* ETHARP_SUPPORT_VLAN && defined(LWIP_HOOK_VLAN_SET) */
   {
-    if (pbuf_header(p, SIZEOF_ETH_HDR) != 0) {
+    if (pbuf_add_header(p, SIZEOF_ETH_HDR) != 0) {
       goto pbuf_header_failed;
     }
   }

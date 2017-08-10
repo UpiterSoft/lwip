@@ -178,7 +178,7 @@ tcp_input(struct pbuf *p, struct netif *inp)
   if (p->len >= hdrlen_bytes) {
     /* all options are in the first pbuf */
     tcphdr_opt1len = tcphdr_optlen;
-    pbuf_header(p, (s16_t)-(s16_t)hdrlen_bytes); /* cannot fail */
+    pbuf_remove_header(p, hdrlen_bytes); /* cannot fail */
   } else {
     u16_t opt2len;
     /* TCP header fits into first pbuf, options don't - data is in the next pbuf */
@@ -186,7 +186,7 @@ tcp_input(struct pbuf *p, struct netif *inp)
     LWIP_ASSERT("p->next != NULL", p->next != NULL);
 
     /* advance over the TCP header (cannot fail) */
-    pbuf_header(p, -TCP_HLEN);
+    pbuf_remove_header(p, TCP_HLEN);
 
     /* determine how long the first and second parts of the options are */
     tcphdr_opt1len = p->len;
@@ -194,7 +194,7 @@ tcp_input(struct pbuf *p, struct netif *inp)
 
     /* options continue in the next pbuf: set p to zero length and hide the
         options in the next pbuf (adjusting p->tot_len) */
-    pbuf_header(p, (s16_t)-(s16_t)tcphdr_opt1len);
+    pbuf_remove_header(p, tcphdr_opt1len);
 
     /* check that the options fit in the second pbuf */
     if (opt2len > p->next->len) {
@@ -209,7 +209,7 @@ tcp_input(struct pbuf *p, struct netif *inp)
 
     /* advance p->next to point after the options, and manually
         adjust p->tot_len to keep it consistent with the changed p->next */
-    pbuf_header(p->next, (s16_t)-(s16_t)opt2len);
+    pbuf_remove_header(p->next, opt2len);
     p->tot_len = (u16_t)(p->tot_len - opt2len);
 
     LWIP_ASSERT("p->len == 0", p->len == 0);
@@ -621,7 +621,7 @@ tcp_listen_input(struct tcp_pcb_listen *pcb)
     }
 #if TCP_LISTEN_BACKLOG
     pcb->accepts_pending++;
-    npcb->flags |= TF_BACKLOGPEND;
+    tcp_set_flags(npcb, TF_BACKLOGPEND);
 #endif /* TCP_LISTEN_BACKLOG */
     /* Set up the new PCB. */
     ip_addr_copy(npcb->local_ip, *ip_current_dest_addr());
@@ -708,7 +708,7 @@ tcp_timewait_input(struct tcp_pcb *pcb)
 
   if ((tcplen > 0)) {
     /* Acknowledge data, FIN or out-of-window SYN */
-    pcb->flags |= TF_ACK_NOW;
+    tcp_ack_now(pcb);
     tcp_output(pcb);
   }
   return;
@@ -1168,13 +1168,10 @@ tcp_receive(struct tcp_pcb *pcb)
                 ++pcb->dupacks;
               }
               if (pcb->dupacks > 3) {
-                /* Inflate the congestion window, but not if it means that
-                   the value overflows. */
-                if ((tcpwnd_size_t)(pcb->cwnd + pcb->mss) > pcb->cwnd) {
-                  pcb->cwnd = (tcpwnd_size_t)(pcb->cwnd + pcb->mss);
-                }
-              } else if (pcb->dupacks == 3) {
-                /* Do fast retransmit */
+                /* Inflate the congestion window */
+                TCP_WND_INC(pcb->cwnd, pcb->mss);
+              } else if (pcb->dupacks >= 3) {
+                /* Do fast retransmit (checked via TF_INFR, not via dupacks count) */
                 tcp_rexmit_fast(pcb);
               }
             }
@@ -1911,7 +1908,7 @@ tcp_parseopt(struct tcp_pcb *pcb)
             pcb->snd_scale = 14U;
           }
           pcb->rcv_scale = TCP_RCV_SCALE;
-          pcb->flags |= TF_WND_SCALE;
+          tcp_set_flags(pcb, TF_WND_SCALE);
           /* window scaling is enabled, we can use the full receive window */
           LWIP_ASSERT("window not at default value", pcb->rcv_wnd == TCPWND_MIN16(TCP_WND));
           LWIP_ASSERT("window not at default value", pcb->rcv_ann_wnd == TCPWND_MIN16(TCP_WND));
@@ -1936,7 +1933,7 @@ tcp_parseopt(struct tcp_pcb *pcb)
           pcb->ts_recent = lwip_ntohl(tsval);
           /* Enable sending timestamps in every segment now that we know
              the remote host supports it. */
-          pcb->flags |= TF_TIMESTAMP;
+          tcp_set_flags(pcb, TF_TIMESTAMP);
         } else if (TCP_SEQ_BETWEEN(pcb->ts_lastacksent, seqno, seqno+tcplen)) {
           pcb->ts_recent = lwip_ntohl(tsval);
         }
@@ -1955,7 +1952,7 @@ tcp_parseopt(struct tcp_pcb *pcb)
         /* TCP SACK_PERM option with valid length */
         if (flags & TCP_SYN) {
           /* We only set it if we receive it in a SYN (or SYN+ACK) packet */
-          pcb->flags |= TF_SACK;
+          tcp_set_flags(pcb, TF_SACK);
         }
         break;
 #endif /* LWIP_TCP_SACK_OUT */

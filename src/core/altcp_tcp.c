@@ -143,10 +143,11 @@ altcp_tcp_err(void *arg, err_t err)
 {
   struct altcp_pcb *conn = (struct altcp_pcb *)arg;
   if (conn) {
-    conn->state = NULL;
+    conn->state = NULL; /* already freed */
     if (conn->err) {
       conn->err(conn->arg, err);
     }
+    altcp_free(conn);
   }
 }
 
@@ -173,7 +174,6 @@ altcp_tcp_setup(struct altcp_pcb *conn, struct tcp_pcb *tpcb)
 struct altcp_pcb *
 altcp_tcp_new_ip_type(u8_t ip_type)
 {
-  /* FIXME: pool alloc */
   struct altcp_pcb *ret = altcp_alloc();
   if (ret != NULL) {
     struct tcp_pcb *tpcb = tcp_new_ip_type(ip_type);
@@ -186,6 +186,19 @@ altcp_tcp_new_ip_type(u8_t ip_type)
     }
   }
   return ret;
+}
+
+struct altcp_pcb *
+altcp_tcp_wrap(struct tcp_pcb *tpcb)
+{
+  if (tpcb != NULL) {
+    struct altcp_pcb *ret = altcp_alloc();
+    if (ret != NULL) {
+      altcp_tcp_setup(ret, tpcb);
+      return ret;
+    }
+  }
+  return NULL;
 }
 
 
@@ -260,7 +273,9 @@ altcp_tcp_abort(struct altcp_pcb *conn)
   if (conn != NULL) {
     struct tcp_pcb *pcb = (struct tcp_pcb *)conn->state;
     ALTCP_TCP_ASSERT_CONN(conn);
-    tcp_abort(pcb);
+    if (pcb) {
+      tcp_abort(pcb);
+    }
   }
 }
 
