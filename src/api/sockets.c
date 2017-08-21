@@ -267,7 +267,7 @@ struct lwip_socket_multicast_mld6_pair {
   /** the socket */
   struct lwip_sock* sock;
   /** the interface index */
-  unsigned int if_idx;
+  u8_t if_idx;
   /** the group address */
   ip6_addr_t multi_addr;
 };
@@ -3187,7 +3187,7 @@ lwip_setsockopt_impl(int s, int level, int optname, const void *optval, socklen_
         const struct ipv6_mreq *imr = (const struct ipv6_mreq *)optval;
         LWIP_SOCKOPT_CHECK_OPTLEN_CONN_PCB_TYPE(sock, optlen, struct ipv6_mreq, NETCONN_UDP);
         inet6_addr_to_ip6addr(&multi_addr, &imr->ipv6mr_multiaddr);
-        netif = netif_get_by_index(imr->ipv6mr_interface);
+        netif = netif_get_by_index((u8_t)imr->ipv6mr_interface);
         if (netif == NULL) {
           err = EADDRNOTAVAIL;
           break;
@@ -3638,7 +3638,7 @@ lwip_socket_register_mld6_membership(int s, unsigned int if_idx, const ip6_addr_
   for (i = 0; i < LWIP_SOCKET_MAX_MEMBERSHIPS; i++) {
     if (socket_ipv6_multicast_memberships[i].sock == NULL) {
       socket_ipv6_multicast_memberships[i].sock   = sock;
-      socket_ipv6_multicast_memberships[i].if_idx = if_idx;
+      socket_ipv6_multicast_memberships[i].if_idx = (u8_t)if_idx;
       ip6_addr_copy(socket_ipv6_multicast_memberships[i].multi_addr, *multi_addr);
       done_socket(sock);
       return 1;
@@ -3693,18 +3693,16 @@ lwip_socket_drop_registered_mld6_memberships(int s)
   for (i = 0; i < LWIP_SOCKET_MAX_MEMBERSHIPS; i++) {
     if (socket_ipv6_multicast_memberships[i].sock == sock) {
       ip_addr_t multi_addr;
-      struct netif *netif;
+      u8_t if_idx;
+
       ip_addr_copy_from_ip6(multi_addr, socket_ipv6_multicast_memberships[i].multi_addr);
-      netif = netif_get_by_index(socket_ipv6_multicast_memberships[i].if_idx);
-      if (netif == NULL) {
-        return;
-      }
+      if_idx = socket_ipv6_multicast_memberships[i].if_idx;
+
       socket_ipv6_multicast_memberships[i].sock   = NULL;
       socket_ipv6_multicast_memberships[i].if_idx = NETIF_NO_INDEX;
       ip6_addr_set_zero(&socket_ipv6_multicast_memberships[i].multi_addr);
 
-      /* fixme: need netconn_join_leave_group that takes netif as argument */
-      netconn_join_leave_group(sock->conn, &multi_addr, netif_ip_addr6(netif, 0), NETCONN_LEAVE);
+      netconn_join_leave_group_netif(sock->conn, &multi_addr, if_idx, NETCONN_LEAVE);
     }
   }
   done_socket(sock);
