@@ -489,6 +489,15 @@
 #endif
 
 /**
+ * MEMP_NUM_SELECT_CB: the number of struct lwip_select_cb.
+ * (Only needed if you have LWIP_MPU_COMPATIBLE==1 and use the socket API.
+ * In that case, you need one per thread calling lwip_select.)
+ */
+#if !defined MEMP_NUM_SELECT_CB || defined __DOXYGEN__
+#define MEMP_NUM_SELECT_CB              4
+#endif
+
+/**
  * MEMP_NUM_TCPIP_MSG_API: the number of struct tcpip_msg, which are used
  * for callback/timeout API communication.
  * (only needed if you use tcpip.c)
@@ -726,7 +735,7 @@
  * in this time, the whole packet is discarded.
  */
 #if !defined IP_REASS_MAXAGE || defined __DOXYGEN__
-#define IP_REASS_MAXAGE                 3
+#define IP_REASS_MAXAGE                 15
 #endif
 
 /**
@@ -1291,19 +1300,49 @@
 #endif
 
 /**
- * TCP_OOSEQ_MAX_BYTES: The maximum number of bytes queued on ooseq per pcb.
- * Default is 0 (no limit). Only valid for TCP_QUEUE_OOSEQ==1.
+ * TCP_OOSEQ_MAX_BYTES: The default maximum number of bytes queued on ooseq per
+ * pcb if TCP_OOSEQ_BYTES_LIMIT is not defined. Default is 0 (no limit).
+ * Only valid for TCP_QUEUE_OOSEQ==1.
  */
 #if !defined TCP_OOSEQ_MAX_BYTES || defined __DOXYGEN__
 #define TCP_OOSEQ_MAX_BYTES             0
 #endif
 
 /**
- * TCP_OOSEQ_MAX_PBUFS: The maximum number of pbufs queued on ooseq per pcb.
- * Default is 0 (no limit). Only valid for TCP_QUEUE_OOSEQ==1.
+ * TCP_OOSEQ_BYTES_LIMIT(pcb): Return the maximum number of bytes to be queued
+ * on ooseq per pcb, given the pcb. Only valid for TCP_QUEUE_OOSEQ==1 &&
+ * TCP_OOSEQ_MAX_BYTES==1.
+ * Use this to override TCP_OOSEQ_MAX_BYTES to a dynamic value per pcb.
+ */
+#if !defined TCP_OOSEQ_BYTES_LIMIT
+#if TCP_OOSEQ_MAX_BYTES
+#define TCP_OOSEQ_BYTES_LIMIT(pcb) TCP_OOSEQ_MAX_BYTES
+#elif defined __DOXYGEN__
+#define TCP_OOSEQ_BYTES_LIMIT(pcb)
+#endif
+#endif
+
+/**
+ * TCP_OOSEQ_MAX_PBUFS: The default maximum number of pbufs queued on ooseq per
+ * pcb if TCP_OOSEQ_BYTES_LIMIT is not defined. Default is 0 (no limit).
+ * Only valid for TCP_QUEUE_OOSEQ==1.
  */
 #if !defined TCP_OOSEQ_MAX_PBUFS || defined __DOXYGEN__
 #define TCP_OOSEQ_MAX_PBUFS             0
+#endif
+
+/**
+ * TCP_OOSEQ_PBUFS_LIMIT(pcb): Return the maximum number of pbufs to be queued
+ * on ooseq per pcb, given the pcb.  Only valid for TCP_QUEUE_OOSEQ==1 &&
+ * TCP_OOSEQ_MAX_PBUFS==1.
+ * Use this to override TCP_OOSEQ_MAX_PBUFS to a dynamic value per pcb.
+ */
+#if !defined TCP_OOSEQ_PBUFS_LIMIT
+#if TCP_OOSEQ_MAX_PBUFS
+#define TCP_OOSEQ_PBUFS_LIMIT(pcb) TCP_OOSEQ_MAX_PBUFS
+#elif defined __DOXYGEN__
+#define TCP_OOSEQ_PBUFS_LIMIT(pcb)
+#endif
 #endif
 
 /**
@@ -2270,6 +2309,15 @@
  */
 #if !defined LWIP_IPV6 || defined __DOXYGEN__
 #define LWIP_IPV6                       0
+#endif
+
+/**
+ * IPV6_REASS_MAXAGE: Maximum time (in multiples of IP6_REASS_TMR_INTERVAL - so seconds, normally)
+ * a fragmented IP packet waits for all fragments to arrive. If not all fragments arrived
+ * in this time, the whole packet is discarded.
+ */
+#if !defined IPV6_REASS_MAXAGE || defined __DOXYGEN__
+#define IPV6_REASS_MAXAGE               60
 #endif
 
 /**
