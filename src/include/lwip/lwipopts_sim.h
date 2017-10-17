@@ -70,6 +70,7 @@
 #define LWIP_NETIF_LINK_CALLBACK   1
 #define LWIP_NETIF_STATUS_CALLBACK 1
 
+/*
 #ifdef CFG_PRODUCTION
 #if CFG_PRODUCTION == 0
 #define LWIP_DEBUG
@@ -102,6 +103,7 @@
 #define PPP_DEBUG               LWIP_DBG_ON
 
 #else
+*/
 
 #define LWIP_DBG_MIN_LEVEL         LWIP_DBG_LEVEL_ALL
 #define PPP_DEBUG                  LWIP_DBG_OFF
@@ -130,8 +132,10 @@
 #define TCP_FR_DEBUG               LWIP_DBG_OFF
 #define TCP_QLEN_DEBUG             LWIP_DBG_OFF
 #define TCP_RST_DEBUG              LWIP_DBG_OFF
+/*
 #endif
 #endif
+*/
 
 
 
