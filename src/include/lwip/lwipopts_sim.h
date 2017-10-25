@@ -103,7 +103,6 @@
 #define PPP_DEBUG               LWIP_DBG_ON
 
 #else
-*/
 
 #define LWIP_DBG_MIN_LEVEL         LWIP_DBG_LEVEL_ALL
 #define PPP_DEBUG                  LWIP_DBG_OFF
@@ -132,7 +131,6 @@
 #define TCP_FR_DEBUG               LWIP_DBG_OFF
 #define TCP_QLEN_DEBUG             LWIP_DBG_OFF
 #define TCP_RST_DEBUG              LWIP_DBG_OFF
-/*
 #endif
 #endif
 */
