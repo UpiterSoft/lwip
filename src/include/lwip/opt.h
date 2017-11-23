@@ -296,6 +296,14 @@
 #endif
 
 /**
+ * MEM_SANITY_CHECK==1: run a sanity check after each mem_free() to make
+ * sure that the linked list of heap elements is not corrupted.
+ */
+#if !defined MEM_SANITY_CHECK || defined __DOXYGEN__
+#define MEM_SANITY_CHECK                0
+#endif
+
+/**
  * MEM_USE_POOLS==1: Use an alternative to malloc() by allocating from a set
  * of memory pools of various sizes. When mem_malloc is called, an element of
  * the smallest pool that can provide the length needed is returned.
@@ -1075,6 +1083,11 @@
  */
 #if !defined DNS_MAX_SERVERS || defined __DOXYGEN__
 #define DNS_MAX_SERVERS                 2
+#endif
+
+/** DNS maximum number of retries when asking for a name, before "timeout". */
+#if !defined DNS_MAX_RETRIES || defined __DOXYGEN__
+#define DNS_MAX_RETRIES           4
 #endif
 
 /** DNS do a name checking between the query and the response. */
@@ -2016,6 +2029,14 @@
 #if !defined LWIP_SOCKET_SELECT || defined __DOXYGEN__
 #define LWIP_SOCKET_SELECT              1
 #endif
+
+/**
+ * LWIP_SOCKET_POLL==1 (default): enable poll() for sockets (including
+ * struct pollfd, nfds_t, and constants)
+ */
+#if !defined LWIP_SOCKET_POLL || defined __DOXYGEN__
+#define LWIP_SOCKET_POLL                1
+#endif
 /**
  * @}
  */
@@ -2881,7 +2902,7 @@
  * - option: option value (u8_t)
  * - len: option data length (u8_t)
  * - pbuf: pbuf where option data is contained
- * - option_value_offset: offset in pbuf where option *data* begins
+ * - option_value_offset: offset in pbuf where option data begins
  *
  * A nice way to get the option contents is pbuf_get_contiguous():
  *  u8_t buf[32];
@@ -2889,6 +2910,28 @@
  */
 #ifdef __DOXYGEN__
 #define LWIP_HOOK_DHCP_PARSE_OPTION(netif, dhcp, state, msg, msg_type, option, len, pbuf, offset)
+#endif
+
+/**
+ * LWIP_HOOK_NETCONN_EXTERNAL_RESOLVE(name, addr, addrtype, err)
+ * Called from netconn APIs (not usable with callback apps) allowing an
+ * external DNS resolver (which uses sequential API) to handle the query.
+ * Signature:
+ *   int my_hook(const char *name, ip_addr_t *addr, u8_t addrtype, err_t *err)
+ * Arguments:
+ * - name: hostname to resolve
+ * - addr: output host address
+ * - addrtype: type of address to query
+ * - err: output error
+ * Return values:
+ * - 0: Hook has not consumed hostname query, query continues into DNS module
+ * - != 0: Hook has consumed the query
+ *
+ * err must also be checked to determine if the hook consumed the query, but
+ * the query failed
+ */
+#ifdef __DOXYGEN__
+#define LWIP_HOOK_NETCONN_EXTERNAL_RESOLVE(name, addr, addrtype, err)
 #endif
 /**
  * @}
