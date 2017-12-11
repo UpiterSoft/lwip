@@ -12,6 +12,7 @@
 #include <lwip/altcp.h>
 
 u16_t httpGetMaxWriteLen(struct altcp_pcb *pcb);
+void httpPrioriyConnClear(struct altcp_pcb *pcb);
 char * getETagHeader(fs_file_extension * const pextension);
 void setCookieSessionID(fs_file_extension * const pextension, const uint32_t session_id);
 

@@ -508,6 +508,7 @@ static void
 http_state_free(struct http_state *hs)
 {
   if (hs != NULL) {
+    httpPrioriyConnClear(hs->pcb);
     http_state_eof(hs);
     http_remove_connection(hs);
     HTTP_FREE_HTTP_STATE(hs);
@@ -1110,6 +1111,14 @@ http_check_eof(struct altcp_pcb *pcb, struct http_state *hs)
     return 0;
   }
 #if LWIP_HTTPD_DYNAMIC_FILE_READ
+
+  //recalc optimal buf size for current socket at current memory state
+  //optimal buf size may increase or decrease over time
+  if (hs->buf && (hs->buf_len != HTTPD_MAX_WRITE_LEN(pcb))) {
+	  mem_free(hs->buf);
+	  hs->buf = NULL;
+  }
+
   /* Do we already have a send buffer allocated? */
   if (hs->buf) {
     /* Yes - get the length of the buffer */
@@ -1200,6 +1209,11 @@ http_send_data_nonssi(struct altcp_pcb *pcb, struct http_state *hs)
     data_to_send = 1;
     hs->file += len;
     hs->left -= len;
+
+    if ( (hs->left == 0) && HTTP_IS_DATA_VOLATILE(hs)){
+      mem_free(hs->buf);
+      hs->buf = NULL;
+    }
   }
 
   return data_to_send;

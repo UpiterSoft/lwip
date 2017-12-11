@@ -49,20 +49,19 @@ static u16_t http_bufLimit(const int avail_mem, const uint8_t priority) {
 		MAXIMUM_BUFFER_SIZE = 2*TCP_MSS,
 	};
 
-	if (avail_mem < 0) {
-		return MINIMUM_BUFFER_SIZE;
-	}
+//	if (avail_mem < 0) {
+//		return MINIMUM_BUFFER_SIZE;
+//	}
+//
+//	int bufLimit = limit(MINIMUM_BUFFER_SIZE, avail_mem, MAXIMUM_BUFFER_SIZE);
 
-	return limit(MINIMUM_BUFFER_SIZE, avail_mem, MAXIMUM_BUFFER_SIZE);
-
-/*
 	int bufLimit = MAXIMUM_BUFFER_SIZE;
 
 	if (avail_mem<=0)           { bufLimit = 64;}
 	else if (avail_mem<=1*1024) { bufLimit = 160;}
 	else if (avail_mem<=3*1024) { bufLimit = 512;}
 	else if (avail_mem<=5*1024) { bufLimit = 1024;}
-	else if (avail_mem<=6*1024) { bufLimit = MAXIMUMP_BUFFER_SIZE;	memtest();}
+	else if (avail_mem<=6*1024) { bufLimit = MAXIMUM_BUFFER_SIZE;	memtest();}
 
 	if (bufLimit>64){
 	  if (memused>HTTP_MEMUSE_LEVEL_1)		  bufLimit /= 2;
@@ -72,18 +71,17 @@ static u16_t http_bufLimit(const int avail_mem, const uint8_t priority) {
 
 	if ((priority == PRIORITY_HIGH)  && (avail_mem-256>bufLimit) ) {
 		bufLimit = avail_mem/2;
-		if (bufLimit > MAXIMUMP_BUFFER_SIZE)
-			bufLimit = MAXIMUMP_BUFFER_SIZE;
+		if (bufLimit > MAXIMUM_BUFFER_SIZE)
+			bufLimit = MAXIMUM_BUFFER_SIZE;
 	}
 
 //	printf("http_bufLimit: bufLimit = %d, avail_mem = %d\n\r", bufLimit, avail_mem);
 	return bufLimit;
-*/
 }
 
-u16_t httpGetMaxWriteLen(struct altcp_pcb* pcb) {
-/*
-	static struct altcp_pcb * priority_connection = NULL;
+static struct altcp_pcb * priority_connection = NULL;
+
+uint8_t httpPriorityConnSet(struct altcp_pcb *pcb){
 	if (priority_connection == NULL) {
 		priority_connection = pcb;
 	}
@@ -92,9 +90,17 @@ u16_t httpGetMaxWriteLen(struct altcp_pcb* pcb) {
 			? PRIORITY_HIGH
 			: PRIORITY_LOW;
 
-	return http_bufLimit(last_free_mem-HTTP_MEM_RESERVE, priority);
-*/
+	return priority;
+}
+
+void httpPrioriyConnClear(struct altcp_pcb *pcb){
+	if (priority_connection == pcb) {
+		priority_connection = NULL;
+	}
+}
+
+u16_t httpGetMaxWriteLen(struct altcp_pcb* pcb) {
 	//the often test call the better
 	memtest();
-	return http_bufLimit(last_free_mem-HTTP_MEM_RESERVE, PRIORITY_HIGH);
+	return http_bufLimit(last_free_mem-HTTP_MEM_RESERVE, httpPriorityConnSet(pcb));
 }
