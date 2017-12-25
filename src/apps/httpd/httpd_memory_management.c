@@ -32,7 +32,7 @@ enum  {
 	PRIORITY_HIGH,
 };
 
-
+/*
 static uint16_t limit(const uint16_t min, const uint16_t value, const uint16_t max) {
 	if (value > max) {
 		return max;
@@ -42,6 +42,7 @@ static uint16_t limit(const uint16_t min, const uint16_t value, const uint16_t m
 	}
 	return value;
 }
+*/
 
 static u16_t http_bufLimit(const int avail_mem, const uint8_t priority) {
 	enum {
