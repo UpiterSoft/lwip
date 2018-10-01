@@ -35,6 +35,10 @@ extern signed long memused;
 #define mem_clib_malloc memt_malloc
 #define mem_clib_calloc memt_calloc
 
+#ifdef CFG_WIFI_API
+#define LWIP_ALTCP 1
+#endif
+
 #define TCP_MSS                         1460
 #define TCP_OVERSIZE                    0
 
